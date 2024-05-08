@@ -14,28 +14,64 @@ import pymysql
 import json
 import re
 import logging
+import uuid
+
+item_images_path = []
 
 class HomespiderPipeline:
-    def __init__(self) -> None:
+    def __init__(self, spider_category, spider_region, max_unsold_house_id, db_settings=None) -> None:
         self.sale_methods = ['negotiation', 'auction', 'tender', 'deadline_sale', 'poa', 'offers']
+        self.homue_sale_methods = ['negotiation', 'auction', 'tender', 'deadline_sale']
         self.property_types = {'house': 'house', 'apartment': 'apartment', 'unit' : 'unit', 'lifestyle_property' : 'lifestyle_dwelling', 'townhouse' : 'townhouse', 'section' : 'section', 'lifestyle_section': 'lifestyle_section', 'studio': 'studio'}
         self.ownerships = ['freehold', 'leasehold', 'cross_lease', 'unit_title', 'company_share']
-        self.house_category = 'business'
-        # conn = pymysql.connect(
+        self.spider_category = spider_category
+        self.spider_region = spider_region
+        self.max_unsold_house_id = max_unsold_house_id
+        self.insert_data_items = []
+        self.item_data_count = 0
+        self.media_url = "https://mediaserver.realestate.co.nz"
+        self.db_settings = db_settings
+        logging.info(self.db_settings)
+
+    @classmethod
+    def from_crawler(cls, crawler):
+        db_settings={
+            'DB_HOST': crawler.settings.get('DB_HOST'),
+            'DB_USER': crawler.settings.get('DB_USER'),
+            'DB_PASSWORD': crawler.settings.get('DB_PASSWORD'),
+            'DB_DATABASE': crawler.settings.get('DB_DATABASE'),
+            'DB_PORT': crawler.settings.get('DB_PORT')
+        }
+        return cls(crawler.spider.spider_category, 
+                   crawler.spider.spider_region, 
+                   crawler.spider.max_unsold_house_id,
+                   db_settings
+                   )
+
+
+    def open_spider(self, spider):
+        # self.conn = pymysql.connect(
         #     host='192.168.150.128',
         #     user='root',
         #     password='123456',
         #     database='homue_api',
         #     port=3366
         # )
-        conn = pymysql.connect(
-            host='homue-dev-mysql.ckdssrns2bi1.ap-southeast-2.rds.amazonaws.com',
-            user='admin',
-            password='gorsuj2nigpy',
-            database='homue_api',
-            port=3306
+        # self.conn = pymysql.connect(
+        #     host='homue-dev-mysql.ckdssrns2bi1.ap-southeast-2.rds.amazonaws.com',
+        #     user='admin',
+        #     password='gorsuj2nigpy',
+        #     database='homue_api',
+        #     port=3306
+        # )
+        self.conn = pymysql.connect(
+            host=self.db_settings.get('DB_HOST'), 
+            user=self.db_settings.get('DB_USER'), 
+            password=self.db_settings.get('DB_PASSWORD'), 
+            database=self.db_settings.get('DB_DATABASE'), 
+            port=self.db_settings.get('DB_PORT')            
         )
-        cursor = conn.cursor()
+        cursor = self.conn.cursor()
         sql = "SELECT * FROM nz_region"
         cursor.execute(sql)
         results = cursor.fetchall()
@@ -63,103 +99,180 @@ class HomespiderPipeline:
 
         self.districts = nz_districts
 
-        sql = f"SELECT * FROM last_spider_houses WHERE category='{self.house_category}'"
-        cursor.execute(sql)
-        results = cursor.fetchall()
-        last_spider_houses = []
-        for row in results:
-            last_spider_houses.append(f"{row[1]}_{row[2]}")
+        # sql = f"SELECT * FROM last_spider_houses WHERE category='{self.spider_category}'"
+        # cursor.execute(sql)
+        # results = cursor.fetchall()
+        # last_spider_houses = []
+        # for row in results:
+        #     last_spider_houses.append(f"{row[1]}_{row[2]}")
 
-        self.last_spider_houses = last_spider_houses
+        # self.last_spider_houses = last_spider_houses
+        # sql = f"SELECT house_id FROM homue_import_houses WHERE category='{self.spider_category}' AND slugRegion='{self.spider_region}' ORDER BY house_id DESC LIMIT 1"
+        # cursor = self.conn.cursor()
+        # cursor.execute(sql)
+        # result = cursor.fetchone()
+        # self.max_unsold_house_id = result[0]
+        
+        cursor.close()
+        # self.conn.close()
 
-        conn.close()
-        logging.info("last_spider_houses")
-        logging.info(self.last_spider_houses)
-        self.media_url = "https://mediaserver.realestate.co.nz"
+    def close_spider(self, spider):
+        if len(self.insert_data_items) == 0:
+            self.insert_images_to_database()
+            self.conn.close()
+        else:
+            self.insert_items_to_database(self.insert_data_items)
+            self.conn.close()
 
     def process_item(self, item, spider):
-        
         houseId = item['houseId']
-        category = item['category']
-        combin_key = f"{houseId}_{category}"
-        if combin_key in self.last_spider_houses:
-            raise DropItem(f"Duplicate item found: {houseId}")
-            # item['is_spided'] = 1
-        
-        agency = item['agency']
-        if agency.get('image-base-url') is not None:
-            agency_logo = {
-                'office-logo': self.media_url + agency.get('image-base-url') + '.scale.x40.jpg'
-            }
-        else:
-            agency_logo = {
-                'office-logo': ""
-            }
-        agency.update(agency_logo)
-        item['agency'] = agency
-        agent = item['agent']
-        if agent.get('image') is not None:
-            agent_avatar = {
-                'avatar': self.media_url + agent.get('image').get('base-url') + '.fcrop.900x900.jpg'
-            }
-        else:
-            agent_avatar = {
-                'avatar': ""
-            }
-        agent.update(agent_avatar)
-        item['agent'] = agent
-
-        priceDisplay = item['priceDisplay']
-        priceDisplay = priceDisplay.replace(' ', '_').lower()
-        if priceDisplay in self.sale_methods:
-            item['salesMethod'] = priceDisplay
-        else:
-            item['salesMethod'] = 'others'
-            item['enquiryOver'] = re.findall(r'\d+', priceDisplay.replace(',', ''))
-
-        propertyType = item['propertyType']
-        if propertyType is not None:
-            propertyType = propertyType.replace(' ', '_').lower()
-            if propertyType in self.property_types.keys():
-                item['propertyType'] = self.property_types.get(propertyType)
+        if houseId <= self.max_unsold_house_id:
+            raise DropItem(f"Aleardy crawl the house: {houseId}")
+        else:        
+            agency = item['agency']
+            if agency.get('image-base-url') is not None:
+                agency_logo = {
+                    'office-logo': self.media_url + agency.get('image-base-url') + '.scale.x40.jpg'
+                }
             else:
-                pass
+                agency_logo = {
+                    'office-logo': ""
+                }
+            agency.update(agency_logo)
+            item['agency'] = agency
+            agent = item['agent']
+            if agent.get('image') is not None:
+                agent_avatar = {
+                    'avatar': self.media_url + agent.get('image').get('base-url') + '.fcrop.900x900.jpg'
+                }
+            else:
+                agent_avatar = {
+                    'avatar': ""
+                }
+            agent.update(agent_avatar)
+            item['agent'] = agent
 
-        if (item['ownership'] is not None) and (item['ownership'] <= 5):
-            item['ownership'] = self.ownerships[item['ownership'] - 1]
-        else:
-            item['ownership'] = self.ownerships[4]
+            priceDisplay = item['priceDisplay']
+            priceDisplay = priceDisplay.replace(' ', '_').lower()
+            if priceDisplay in self.sale_methods:
+                if priceDisplay in self.homue_sale_methods:
+                    item['salesMethod'] = priceDisplay
+                else:
+                    item['salesMethod'] = 'others'
+            else:
+                item['salesMethod'] = 'asking_price'
+                item['enquiryOver'] = re.findall(r'\d+', priceDisplay.replace(',', ''))[0]
 
-        openHomeTimes = item['openHomeTimes']
-        newOpenHomeTimes = []
-        if len(openHomeTimes) != 0:
-            for openHomeTime in openHomeTimes:
-                newOpenHomeTime = [openHomeTime.get('start'), openHomeTime.get('end')]
-                newOpenHomeTimes.append(newOpenHomeTime)
-            item['openHomeTimes'] = newOpenHomeTimes
+            propertyType = item['propertyType']
+            if propertyType is not None:
+                propertyType = propertyType.replace(' ', '_').lower()
+                if propertyType in self.property_types.keys():
+                    item['propertyType'] = self.property_types.get(propertyType)
+                else:
+                    pass
 
-        if item['regionName'] is not None:
-            item['regionId'] = self.regions.get(item['regionName'].replace(' ', '').lower())
-        if item['cityName'] is not None:
-            item['cityId'] = self.cities.get(item['cityName'].replace(' ', '').lower())
-        if item['districtName'] is not None:
-            item['districtId'] = self.districts.get(item['districtName'].replace(' ', '').lower())
-        item['otherFacilities'] = json.dumps(item['otherFacilities'])
-        item['videoSrc'] = json.dumps(item['videoSrc'])
-        # item['photos'] = json.dumps(item['photos'])
-        item['floorPlanPhotos'] = json.dumps(item['floorPlanPhotos'])
-        item['openHomeTimes'] = json.dumps(item['openHomeTimes'])
-        item['primarySchool'] = json.dumps(item['primarySchool'])
-        item['intermediateSchool'] = json.dumps(item['intermediateSchool'])
-        item['secondarySchool'] = json.dumps(item['secondarySchool'])
-        item['childCares'] = json.dumps(item['childCares'])
-        item['features'] = json.dumps(item['features'])
-        item['agents'] = json.dumps(item['agents'])
-        item['detail_address'] = json.dumps(item['detail_address'])
-        item['agency'] = json.dumps(item['agency'])
-        item['agent'] = json.dumps(item['agent'])
-        
-        return item
+            if (item['ownership'] is not None) and (item['ownership'] <= 5):
+                item['ownership'] = self.ownerships[item['ownership'] - 1]
+            else:
+                item['ownership'] = self.ownerships[4]
+
+            openHomeTimes = item['openHomeTimes']
+            newOpenHomeTimes = []
+            if len(openHomeTimes) != 0:
+                for openHomeTime in openHomeTimes:
+                    newOpenHomeTime = [openHomeTime.get('start'), openHomeTime.get('end')]
+                    newOpenHomeTimes.append(newOpenHomeTime)
+                item['openHomeTimes'] = newOpenHomeTimes
+
+            if item['regionName'] is not None:
+                item['regionId'] = self.regions.get(item['regionName'].replace(' ', '').lower())
+            else:
+                item['regionId'] = 0
+
+            if item['cityName'] is not None:
+                item['cityId'] = self.cities.get(item['cityName'].replace(' ', '').lower())
+            else:
+                item['cityId'] = 0   
+
+            if item['districtName'] is not None:
+                item['districtId'] = self.districts.get(item['districtName'].replace(' ', '').lower())
+            else:
+                item['districtId'] = 0                
+
+            item['otherFacilities'] = json.dumps(item['otherFacilities'])
+            item['videoSrc'] = json.dumps(item['videoSrc'])
+            item['floorPlanPhotos'] = json.dumps(item['floorPlanPhotos'])
+            item['openHomeTimes'] = json.dumps(item['openHomeTimes'])
+            item['primarySchool'] = json.dumps(item['primarySchool'])
+            item['intermediateSchool'] = json.dumps(item['intermediateSchool'])
+            item['secondarySchool'] = json.dumps(item['secondarySchool'])
+            item['childCares'] = json.dumps(item['childCares'])
+            item['features'] = json.dumps(item['features'])
+            item['agents'] = json.dumps(item['agents'])
+            item['detail_address'] = json.dumps(item['detail_address'])
+            item['agency'] = json.dumps(item['agency'])
+            item['agent'] = json.dumps(item['agent'])
+
+            self.process_insert_data(item)
+            if self.item_data_count == 100:
+                self.insert_items_to_database(self.insert_data_items)
+            return item
+
+    def process_insert_data(self, item):
+        is_new_insert = 1
+        landArea = float(item['landArea']) if item['landArea'] is not None else 0.00
+        landArea = landArea * 10000 if item['landAreaUnit'] == 'HA' else landArea
+        floorArea = float(item['floorArea']) if item['floorArea'] is not None else 0.00
+        floorArea = floorArea * 10000 if item['floorAreaUnit'] == 'ha' else floorArea
+        insert_data = (uuid.uuid4().hex, item.get('houseId'), item.get('title'), item.get('url'), item.get('listing_no'), item.get('category'), int(item.get('regionId', 0)), item.get('regionName'), int(item.get('cityId', 0)), item.get('cityName'),
+                       int(item.get('districtId', 0)), item.get('districtName'), item.get('unitNumber'), item.get('streetNumber'), item.get('streetName'), item.get('slugRegion'), item.get('propertyType'), item.get('ownership'), item.get('salesMethod'), float(item.get('enquiryOver', 0)),
+                       item.get('auctionTime'), item.get('tenderTime'), item.get('deadlineTime'), float(item.get('rateableValue', 0)), float(item.get('indictativePrice', 0)), item.get('openHomeTimes'), landArea, floorArea, item.get('bedrooms'), item.get('bathrooms'), 
+                       item.get('rooms'), item.get('parkingMainRoof'), item.get('parkingFreestanding'), item.get('parkingSpaces'), item.get('exteriorMaterial'), item.get('roofMaterial'), item.get('buildingAge'), item.get('otherFacilities'), item.get('englishDescription'), item.get('primarySchool'), 
+                       item.get('intermediateSchool'), item.get('secondarySchool'), item.get('childCares'), item.get('floorPlanPhotos'), item.get('videoSrc'), item.get('latitude'), item.get('longtitude'), item.get('address'), item.get('agent'), item.get('agents'), 
+                       item.get('agency'), item.get('features'), item.get('auctionAddress'), item.get('detail_address'), float(item.get('capitalValue', 0)), item.get('subtitle'), item.get('pubished_date'), is_new_insert, json.dumps(item.get('photos'))
+                    )        
+        self.insert_data_items.append(insert_data)
+        self.item_data_count += 1
+
+    def insert_items_to_database(self, insert_data):
+        sql = "INSERT INTO homue_import_houses(house_id, origin_house_id, title, url, listing_no, category, regionId, regionName, cityId, cityName, " + \
+              "districtId, districtName, unitNumber, streetNumber, streetName, slugRegion, propertyType, ownership, salesMethod, enquiryOver, " + \
+              "auctionTime, tenderTime, deadlineTime, rateableValue, indictativePrice, openHomeTimes, landArea, floorArea, bedrooms, bathrooms, " + \
+              "rooms, parkingMainRoof, parkingFreestanding, parkingSpaces, exteriorMaterial, roofMaterial, buildingAge, otherFacilities, englishDescription, primarySchool, " + \
+              "intermediateSchool, secondarySchool, childCares, floorPlanPhotos, videoSrc, latitude, longtitude, address, agent, agents, " + \
+              "agency, features, auctionAddress, detail_address, capitalValue, subtitle, pubished_date, is_new_insert, photos" + \
+              ") VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, " + \
+              "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, " + \
+              "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, " + \
+              "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, " + \
+              "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, " + \
+              "%s, %s, %s, %s, %s, %s, %s, %s, %s)"
+        cursor = self.conn.cursor()
+        cursor.executemany(sql, insert_data)
+        self.conn.commit()
+
+        global item_images_path
+        if len(item_images_path) != 0:
+            for image_path in item_images_path:
+                sql = "UPDATE homue_import_houses SET image_paths=%s WHERE origin_house_id=%s"
+                cursor.execute(sql, (image_path[1], image_path[0]))
+                self.conn.commit()
+            item_images_path.clear()
+
+        cursor.close()
+        self.insert_data_items.clear()
+        self.item_data_count = 0
+
+    def insert_images_to_database(self):
+        global item_images_path
+        if len(item_images_path) != 0:
+            cursor = self.conn.cursor()
+            for image_path in item_images_path:
+                sql = "UPDATE homue_import_houses SET image_paths=%s WHERE origin_house_id=%s"
+                cursor.execute(sql, (image_path[1], image_path[0]))
+                self.conn.commit()
+            cursor.close()
+            item_images_path.clear()        
 
 
 class HomeImagesPipeline(ImagesPipeline):
@@ -184,5 +297,9 @@ class HomeImagesPipeline(ImagesPipeline):
         adapter['image_paths'] = json.dumps(image_paths)
 
         item['photos'] = json.dumps(item['photos'])
+        global item_images_path
+        item_images_path.append((adapter['houseId'], adapter['image_paths']))
         return item
+
+
 

@@ -8,7 +8,10 @@ import scrapy
 
 class HomespiderItem(scrapy.Item):
     # define the fields for your item here like:
+    houseId = scrapy.Field()
+    title = scrapy.Field() #标题
     url = scrapy.Field()        #房源地址
+    listing_no = scrapy.Field()
     category = scrapy.Field()   #房屋类别
     regionId = scrapy.Field()   
     regionName = scrapy.Field()
@@ -19,12 +22,12 @@ class HomespiderItem(scrapy.Item):
     unitNumber = scrapy.Field()
     streetNumber = scrapy.Field()
     streetName = scrapy.Field()
+    slugRegion = scrapy.Field()
     propertyType = scrapy.Field()
     ownership = scrapy.Field()
     salesMethod = scrapy.Field()
     enquiryOver = scrapy.Field()    #问询价
     auctionTime = scrapy.Field()    #拍卖时间
-    auctionAddress = scrapy.Field() #不对应，可以去掉
     tenderTime = scrapy.Field()     #招标时间
     deadlineTime = scrapy.Field()   #截止时间
     rateableValue = scrapy.Field()  #税务估值
@@ -50,12 +53,12 @@ class HomespiderItem(scrapy.Item):
     views = scrapy.Field() #景观 暂缺
     developmentOpportunities = scrapy.Field() #开发机会 暂缺
     agencyRef = scrapy.Field() #代理编号 暂缺
-    title = scrapy.Field() #标题
     englishDescription = scrapy.Field() #英文描述
     chineseDescription = scrapy.Field() #中文描述
     primarySchool = scrapy.Field() #小学 (json)
     intermediateSchool = scrapy.Field() #中学(json)
     secondarySchool = scrapy.Field() #高中(json)
+    childCares = scrapy.Field() #不对应，可以去掉(json)
     currentStatus = scrapy.Field() #当前状态
     endOfLease = scrapy.Field() #租约到期
     serviceBuildings = scrapy.Field() #服务建筑
@@ -78,26 +81,23 @@ class HomespiderItem(scrapy.Item):
     longtitude = scrapy.Field() #经度
     keywords = scrapy.Field() #关键词
     address = scrapy.Field() #地址
-    partnerIds = scrapy.Field() #合作伙伴ID
-    subtitle = scrapy.Field()
-    # images = scrapy.Field()
-    features = scrapy.Field() #(json)
+    partnerIds = scrapy.Field() #合作伙伴ID(未插入数据库)
+    agent = scrapy.Field() #(json)
     agents = scrapy.Field() #(json)
-    
+    agency = scrapy.Field() #(json)
+    features = scrapy.Field() #(json)
+    auctionAddress = scrapy.Field() #不对应，可以去掉
+    detail_address = scrapy.Field() #不对应，可以去掉(json)
     capitalValue = scrapy.Field() #不对应，可以去掉
+    subtitle = scrapy.Field()
+    pubished_date = scrapy.Field()
+
     priceDisplay = scrapy.Field() #不对应，可以去掉
     priceCode = scrapy.Field() #不对应，可以去掉
     landAreaUnit = scrapy.Field() #不对应，可以去掉
     floorAreaUnit = scrapy.Field() #不对应，可以去掉
-    detail_address = scrapy.Field() #不对应，可以去掉(json)
     description = scrapy.Field() #不对应，可以去掉
-    childCares = scrapy.Field() #不对应，可以去掉(json)
     propertyShortId = scrapy.Field() #不对应，可以去掉
-    listing_no = scrapy.Field()
-    houseId = scrapy.Field()
-    agency = scrapy.Field()
-    agent = scrapy.Field()
-    pubished_date = scrapy.Field()
     image_paths = scrapy.Field()
     # is_spided = scrapy.Field()
     # pass

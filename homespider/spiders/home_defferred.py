@@ -1,23 +1,24 @@
 import scrapy
-import copy
 from scrapy import Request
-from scrapy.http import JsonRequest
 from ..items import HomespiderItem
 from urllib import parse
 import json
+from scrapy.utils.defer import maybe_deferred_to_future
+from twisted.internet.defer import DeferredList
+import logging
+import pymysql
 
-
-class HomesSpiderSpider(scrapy.Spider):
-    name = "homes_spider"
+class HomeDefferredSpider(scrapy.Spider):
+    name = "home_defferred"
     allowed_domains = ["realestate.co.nz", "platform.realestate.co.nz"]
+    
     realestate_header = {"Accept": "application/json", "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0"}
      # nz_regions_size = 21
     nz_regions = ['auckland', 'canterbury', 'waikato', 'bay-of-plenty', 'northland', 'wellington', 'manawatu-whanganui', 'central-otago-lakes-district', 'otago', 'hawkes-bay', 'taranaki', 'coromandel', 'nelson-bays', 'southland', 'central-north-island', 'wairarapa', 'marlborough', 'west-coast', 'pacific-islands', 'gisborne', 'confidential']
     # nz_regions = ['pacific-islands', 'gisborne']
     house_categories = ['residential', 'commercial', 'rural', 'business']
 
-    # house_category = 'business'
-    start_urls = ["https://www.realestate.co.nz/business/sale?by=latest"]
+    start_urls = ["https://www.realestate.co.nz/residential/sale?by=latest"]
     root_url = "https://www.realestate.co.nz"
     media_url = "https://mediaserver.realestate.co.nz"
 
@@ -34,53 +35,89 @@ class HomesSpiderSpider(scrapy.Spider):
     #example: https://platform.realestate.co.nz/search/v1/childcares?filter[ids][]=bbbbbbs0c&filter[ids][]=bbbbbbyxc&filter[ids][]=bbbbbbXyc&filter[ids][]=bbbbbb20c&filter[ids][]=bbbbbbryc&filter[ids][]=bbbbbbb0c&filter[ids][]=bbbbbbvxc&filter[ids][]=bbbbbbQvc&filter[ids][]=bbbbbbP4&filter[ids][]=bbbbbbKxc&filter[ids][]=bbbbbbHwc&filter[ids][]=bbbbbbm0c&filter[ids][]=bbbbbbl0c&filter[ids][]=bbbbbbBwc&filter[ids][]=bbbbbbPzc&filter[ids][]=bbbbbbP1c&filter[ids][]=bbbbbbKwc&filter[ids][]=bbbbbbBxc&filter[ids][]=bbbbbbg5&filter[ids][]=bbbbbb0wc&filter[ids][]=bbbbbb5wc&filter[ids][]=bbbbbbZwc&filter[ids][]=bbbbbbLyc&filter[ids][]=bbbbbbnxc&filter[ids][]=bbbbbbR4&filter[ids][]=bbbbbbr0c&filter[ids][]=bbbbbbz0c&filter[ids][]=bbbbbbFwc&filter[ids][]=bbbbbbf5&filter[ids][]=bbbbbbxxc&page[limit]=30
     childcares_base_url = "https://platform.realestate.co.nz/search/v1/childcares?"
 
-    def __init__(self, region = None, category = None, **kwargs):
+    def __init__(self, url=None, **kwargs):
         super().__init__(**kwargs)
-        self.spider_region = self.nz_regions[int(region)]
-        self.house_category = self.house_categories[int(category)]
+        self.spider_url = url
+        urls = url.split('/')
+        self.spider_category = urls[3]
+        self.spider_region = urls[-1].split('?')[0]
+
+        self.conn = pymysql.connect(
+            host='192.168.150.128',
+            user='root',
+            password='123456',
+            database='homue_api',
+            port=3366
+        )
+        sql = f"SELECT house_id FROM homue_import_houses WHERE category='{self.spider_category}' AND slugRegion='{self.spider_region}' ORDER BY house_id DESC LIMIT 1"
+        cursor = self.conn.cursor()
+        cursor.execute(sql)
+        result = cursor.fetchone()
+        if result is not None:
+            self.max_unsold_house_id = result[0]
+        else:
+            self.max_unsold_house_id = ''
+        cursor.close()
+        self.conn.close()
+
+        self.has_smaller_house_id = False
 
     def start_requests(self):
-        spider_start_url = f'{self.root_url}/{self.house_category}/sale/{self.spider_region}?by=latest'
-        yield Request(url=spider_start_url, headers=self.realestate_header, callback=self.parse)
-        # for url in self.start_urls:
-        #     yield Request(url=url, headers=self.realestate_header, callback=self.parse)
+        yield Request(url=self.spider_url, headers=self.realestate_header, callback=self.parse)
 
     def parse(self, response):
-        # pass
-        if self.house_category == 'business':
-            for house in response.css('div.listing-tile'):
-                detail_page_link = house.css("div.tile--body>div.relative a::attr(href)").get()
-                # self.log(detail_page_link)
-                # detail_page_link = self.root_url + detail_page_link
-                if detail_page_link is not None:
-                    house_id = detail_page_link.split("/")[1]
+        # if self.spider_category == 'business':
+        #     for house in response.css('div.listing-tile'):
+        #         detail_page_link = house.css("div.tile--body>div.relative:last-child>a::attr(href)").get()
+        #         if detail_page_link is not None:
+        #             house_id = detail_page_link.split("/")[1]
+        #             if house_id <= self.max_unsold_house_id:
+        #                 pass
+        #             else:
+        #                 attributes_api_url = self.attributes_base_url + house_id + '?include=' + parse.quote(self.attributes_url_params)
+        #                 yield Request(attributes_api_url, headers=self.realestate_header, callback=self.parse_detail)
+        # else:
+        #     for house in response.css('div.listing-tile'):
+        #         detail_page_link = house.css('div.tile--body>div.relative:last-child>a::attr(href)').get()
+        #         if detail_page_link is not None:
+        #             house_id = detail_page_link.split("/")[1]
+        #             if house_id <= self.max_unsold_house_id:
+        #                 pass
+        #             else:
+        #                 attributes_api_url = self.attributes_base_url + house_id + '?include=' + parse.quote(self.attributes_url_params)
+        #                 yield Request(attributes_api_url, headers=self.realestate_header, callback=self.parse_detail)
+        for house in response.css('div.listing-tile'):
+            detail_page_link = house.css("div.tile--body>div.relative:last-child>a::attr(href)").get()
+            if detail_page_link is not None:
+                house_id = detail_page_link.split("/")[1]
+                if house_id <= self.max_unsold_house_id:
+                    self.has_smaller_house_id = True
+                else:
                     attributes_api_url = self.attributes_base_url + house_id + '?include=' + parse.quote(self.attributes_url_params)
-                    # self.log(f"url: {attributes_api_url}")
                     yield Request(attributes_api_url, headers=self.realestate_header, callback=self.parse_detail)
-        else:
-            for house in response.css('div.listing-tile'):
-                detail_page_link = house.css('div.swiper-wrapper a::attr(href)').get()
-                if detail_page_link is not None:
-                    detail_page_link = self.root_url + detail_page_link
-                    # self.log(detail_page_link)
-                    house_id = detail_page_link.split("/")[3]
-                    attributes_api_url = self.attributes_base_url + house_id + '?include=' + parse.quote(self.attributes_url_params)
-                    self.log(attributes_api_url)
 
-                    yield Request(attributes_api_url, headers=self.realestate_header, callback=self.parse_detail)
-            
-    def parse_detail(self, response):
-        # pass
+        if self.has_smaller_house_id == True:
+            pass
+        else:
+            next_page = response.css('div.paginated-items>div.paginated-items__control:last-child a').get()
+            if next_page is not None:
+                self.latest_request_page = self.latest_request_page + 1
+                next_page_url = f'{self.root_url}/{self.spider_category}/sale/{self.spider_region}?by=latest&page={self.latest_request_page}'
+                logging.info(next_page_url)
+                yield Request(url=next_page_url, headers=self.realestate_header, callback=self.parse)
+    
+    async def parse_detail(self, response):
         json_data = json.loads(response.text)
         data = json_data.get('data')
         house_attributes = data.get('attributes')
         detail_address = house_attributes.get('address')
         included_data = json_data.get('included')
+        full_address = detail_address.get('full-address')
         house_item = HomespiderItem()
         house_item['url'] = house_attributes.get('website-full-url')
         house_item['houseId'] = data.get('id')
         house_item['listing_no'] = house_attributes.get('listing-no')
-        house_item['category'] = self.house_category
+        house_item['category'] = self.spider_category
         house_item['regionName'] = detail_address.get('region')
         house_item['cityName'] = detail_address.get('district')
         house_item['districtName'] = detail_address.get('suburb')
@@ -108,16 +145,17 @@ class HomesSpiderSpider(scrapy.Spider):
         # house_item['exteriorMaterial'] = house_attributes.get('parking-covered-count')
         # house_item['roofMaterial'] = house_attributes.get('parking-covered-count')
         house_item['otherFacilities'] = house_attributes.get('other-features')  
-        house_item['title'] = detail_address.get('full-address')
+        house_item['title'] = full_address if len(full_address) != 0 else house_attributes.get('header')
         house_item['englishDescription'] = house_attributes.get('description')
         # house_item['floorPlanPhotos'] = house_attributes.get('floorplans')
         house_item['videoSrc'] = house_attributes.get('videos')
         house_item['latitude'] = detail_address.get('latitude')
         house_item['longtitude'] = detail_address.get('longitude')
-        house_item['address'] = detail_address.get('full-address')
+        house_item['address'] = full_address
         house_item['subtitle'] = house_attributes.get('header')
         house_item['features'] = house_attributes.get('features')
         house_item['detail_address'] = detail_address
+        house_item['slugRegion'] = self.spider_region
         # house_item['is_spided'] = 0
 
         # house_item['agency'] = included_data[0].get('attributes')
@@ -149,12 +187,13 @@ class HomesSpiderSpider(scrapy.Spider):
             house_item['floorPlanPhotos'] = floorPlanPhotos
 
         child_cares = house_attributes.get('child-cares')
-        house_item['childCares'] = child_cares
+        # logging.info(f'child_cares: {child_cares}')
+        # house_item['childCares'] = child_cares
 
         propertyShortId = house_attributes.get('property-short-id')
         house_item['propertyShortId'] = propertyShortId
         schools = house_attributes.get('schools')
-        if schools is not None:
+        if len(schools) != 0:
             schools_params = {
                 'filter[geocode]': f"{detail_address.get('longitude')},{detail_address.get('latitude')}",
                 'filter[includeNearby]': 'true',
@@ -162,57 +201,43 @@ class HomesSpiderSpider(scrapy.Spider):
                 'page[limit]': 50
             }
             schools_url = self.schools_base_url + parse.urlencode(schools_params)
-            yield Request(schools_url, headers=self.realestate_header, callback=self.parse_schools, meta={'house_item': house_item})
-        elif child_cares is not None:
-            child_cares_params = ''
-            for child_care in child_cares:
-                child_cares_params += f"filter[ids][]={child_care.get('short-id')}&"
+            schools_request = Request(url=schools_url, headers=self.realestate_header)
+            schools_deferred = self.crawler.engine.download(schools_request)
+            schools_response = await maybe_deferred_to_future(schools_deferred)
+            if schools_response is not None:
+                schools_json_data = json.loads(schools_response.text)
+                schools_data = schools_json_data['data']
+                primarySchool = []
+                intermediateSchool = []
+                secondarySchool = []
+                for school in schools_data:
+                    school_attributes = school.get('attributes')
+                    organization_type = school_attributes.get('organization-type')
+                    school_data = {
+                        'organization_name': school_attributes.get('organization-name'),
+                        'coed_status': school_attributes.get('coed-status'),
+                        'geo_radius': school_attributes.get('geo-radius'),
+                        'in_zone': school_attributes.get('in-zone'),
+                        'eqi': school_attributes.get('eqi'),
+                        'organization_type': organization_type,
+                        'address': school_attributes.get('address'),
+                        'origin_attributes': school_attributes
+                    }
+                    if 'Primary' in organization_type:
+                        primarySchool.append(school_data)
+                    elif 'Intermediate' in organization_type:
+                        intermediateSchool.append(school_data)
+                    else:
+                        secondarySchool.append(school_data)
 
-            child_cares_params += 'page[limit]=50'
-            child_cares_params = child_cares_params.replace('[', '%5B').replace(']', '%5D')
-            child_cares_url = self.childcares_base_url + child_cares_params
-            yield Request(child_cares_url, headers=self.realestate_header, callback=self.parse_child_cares, meta={'house_item': house_item})
-        elif propertyShortId is not None:
-            property_url = self.properties_base_url + propertyShortId
-            yield Request(property_url, headers=self.realestate_header, callback=self.parse_properties, meta={'house_item': house_item})
+                house_item['primarySchool'] = primarySchool
+                house_item['intermediateSchool'] = intermediateSchool
+                house_item['secondarySchool'] = secondarySchool
         else:
-            yield house_item
+            house_item['primarySchool'] = []
+            house_item['intermediateSchool'] = []
+            house_item['secondarySchool'] = []
 
-    def parse_schools(self, response):
-        house_item = response.meta['house_item']
-        json_data = json.loads(response.text)
-        schools_data = json_data['data']
-        primarySchool = []
-        intermediateSchool = []
-        secondarySchool = []
-        for school in schools_data:
-            school_attributes = school.get('attributes')
-            organization_type = school_attributes.get('organization-type')
-            school_data = {
-                'organization_name': school_attributes.get('organization-name'),
-                'coed_status': school_attributes.get('coed-status'),
-                'geo_radius': school_attributes.get('geo-radius'),
-                'in_zone': school_attributes.get('in-zone'),
-                'eqi': school_attributes.get('eqi'),
-                'organization_type': organization_type,
-                'address': school_attributes.get('address'),
-                'origin_attributes': school_attributes
-            }
-            if 'Primary' in organization_type:
-                primarySchool.append(school_data)
-            elif 'Intermediate' in organization_type:
-                intermediateSchool.append(school_data)
-            else:
-                secondarySchool.append(school_data)
-
-        house_item['primarySchool'] = primarySchool
-        house_item['intermediateSchool'] = intermediateSchool
-        house_item['secondarySchool'] = secondarySchool
-
-        # yield house_item
-
-        child_cares = house_item['childCares']
-        propertyShortId = house_item['propertyShortId']
         if child_cares is not None:
             child_cares_params = ''
             for child_care in child_cares:
@@ -221,72 +246,26 @@ class HomesSpiderSpider(scrapy.Spider):
             child_cares_params += 'page[limit]=50'
             child_cares_params = child_cares_params.replace('[', '%5B').replace(']', '%5D')
             child_cares_url = self.childcares_base_url + child_cares_params
-            yield Request(child_cares_url, headers=self.realestate_header, callback=self.parse_child_cares, meta={'house_item': house_item})
-
-        elif propertyShortId is not None:
-            property_url = self.properties_base_url + propertyShortId
-            yield Request(property_url, headers=self.realestate_header, callback=self.parse_properties, meta={'house_item': house_item})
-
+            child_cares_request = Request(url=child_cares_url, headers=self.realestate_header)
+            child_cares_deferred = self.crawler.engine.download(child_cares_request)
+            child_cares_response = await maybe_deferred_to_future(child_cares_deferred)
+            child_cares_json_data = json.loads(child_cares_response.text)
+            child_cares_data = child_cares_json_data['data']
+            house_item['childCares'] = child_cares_data
         else:
-            yield house_item
+            house_item['childCares'] = []
 
-    def parse_child_cares(self, response):
-        house_item = response.meta['house_item']
-        json_data = json.loads(response.text)
-        child_cares_data = json_data['data']
-        child_cares = house_item['childCares']
-        new_child_cares = []
-        if child_cares_data is not None:
-            for child_care in child_cares_data:
-                for pre_child_care in child_cares:
-                    if child_care.get('id') == pre_child_care.get('short-id'):
-                        new_child_care = {}
-                        new_child_care.update(child_care.get('attributes'))
-                        need_pre_child_care = {'geo-radius': pre_child_care.get('geo-radius'), 'in-zone': pre_child_care.get('in-zone'), 'has-zone': pre_child_care.get('has-zone')}
-                        new_child_care.update(need_pre_child_care)
-                        new_child_cares.append(new_child_care)
-
-            house_item['childCares'] = new_child_cares
-
-        # yield house_item
-
-        propertyShortId = house_item['propertyShortId']
         if propertyShortId is not None:
             property_url = self.properties_base_url + propertyShortId
-            yield Request(property_url, headers=self.realestate_header, callback=self.parse_properties, meta={'house_item': house_item})
-        else:
-            yield house_item
-
-    
-    def parse_properties(self, response):
-        house_item = response.meta['house_item']
-        json_data = json.loads(response.text)
-        properties_data = json_data['data']
-
-        council_information = properties_data.get('attributes').get('council-information')
-        if council_information is not None:
-            house_item['capitalValue'] = properties_data.get('attributes').get('council-information').get('capital-value')
-        
-        house_item['buildingAge'] = properties_data.get('building-age')
-
+            property_request = Request(url=property_url, headers=self.realestate_header)
+            property_deferred = self.crawler.engine.download(property_request)
+            property_response = await maybe_deferred_to_future(property_deferred)
+            property_json_data = json.loads(property_response.text)
+            properties_data = property_json_data['data']
+            if properties_data is not None:
+                council_information = properties_data.get('attributes').get('council-information')
+                if council_information is not None:
+                    house_item['capitalValue'] = properties_data.get('attributes').get('council-information').get('capital-value')
+                
+                house_item['buildingAge'] = properties_data.get('building-age')            
         yield house_item
-
-    
-
-
-
-        
-
-
-
-
-        
-        
-
-
-        
-
-
-        
-        
-
