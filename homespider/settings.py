@@ -21,6 +21,7 @@ ROBOTSTXT_OBEY = True
 
 
 LOG_FILE='./scrapy.log'
+LOG_LEVEL='ERROR'
 
 IMAGES_STORE='./images'
 

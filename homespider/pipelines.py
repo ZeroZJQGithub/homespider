@@ -129,30 +129,37 @@ class HomespiderPipeline:
         if houseId <= self.max_unsold_house_id:
             raise DropItem(f"Aleardy crawl the house: {houseId}")
         else:        
-            agency = item['agency']
-            if agency.get('image-base-url') is not None:
-                agency_logo = {
-                    'office-logo': self.media_url + agency.get('image-base-url') + '.scale.x40.jpg'
-                }
+            agency = item.get('agency')
+            if agency is not None:
+                if agency.get('image-base-url') is not None:
+                    agency_logo = {
+                        'office-logo': self.media_url + agency.get('image-base-url') + '.scale.x40.jpg'
+                    }
+                else:
+                    agency_logo = {
+                        'office-logo': ""
+                    }
+                agency.update(agency_logo)
+                item['agency'] = agency
             else:
-                agency_logo = {
-                    'office-logo': ""
-                }
-            agency.update(agency_logo)
-            item['agency'] = agency
-            agent = item['agent']
-            if agent.get('image') is not None:
-                agent_avatar = {
-                    'avatar': self.media_url + agent.get('image').get('base-url') + '.fcrop.900x900.jpg'
-                }
-            else:
-                agent_avatar = {
-                    'avatar': ""
-                }
-            agent.update(agent_avatar)
-            item['agent'] = agent
+                item['agency'] = []
 
-            priceDisplay = item['priceDisplay']
+            agent = item.get('agent')
+            if agent is not None:
+                if agent.get('image') is not None:
+                    agent_avatar = {
+                        'avatar': self.media_url + agent.get('image').get('base-url') + '.fcrop.900x900.jpg'
+                    }
+                else:
+                    agent_avatar = {
+                        'avatar': ""
+                    }
+                agent.update(agent_avatar)
+                item['agent'] = agent
+            else:
+                item['agent'] = []
+
+            priceDisplay = item.get('priceDisplay')
             priceDisplay = priceDisplay.replace(' ', '_').lower()
             if priceDisplay in self.sale_methods:
                 if priceDisplay in self.homue_sale_methods:
@@ -163,7 +170,7 @@ class HomespiderPipeline:
                 item['salesMethod'] = 'asking_price'
                 item['enquiryOver'] = re.findall(r'\d+', priceDisplay.replace(',', ''))[0]
 
-            propertyType = item['propertyType']
+            propertyType = item.get('propertyType')
             if propertyType is not None:
                 propertyType = propertyType.replace(' ', '_').lower()
                 if propertyType in self.property_types.keys():
@@ -171,12 +178,12 @@ class HomespiderPipeline:
                 else:
                     pass
 
-            if (item['ownership'] is not None) and (item['ownership'] <= 5):
+            if (item.get('ownership') is not None) and (item['ownership'] <= 5):
                 item['ownership'] = self.ownerships[item['ownership'] - 1]
             else:
                 item['ownership'] = self.ownerships[4]
 
-            openHomeTimes = item['openHomeTimes']
+            openHomeTimes = item.get('openHomeTimes')
             newOpenHomeTimes = []
             if len(openHomeTimes) != 0:
                 for openHomeTime in openHomeTimes:
@@ -184,17 +191,17 @@ class HomespiderPipeline:
                     newOpenHomeTimes.append(newOpenHomeTime)
                 item['openHomeTimes'] = newOpenHomeTimes
 
-            if item['regionName'] is not None:
+            if item.get('regionName') is not None:
                 item['regionId'] = self.regions.get(item['regionName'].replace(' ', '').lower())
             else:
                 item['regionId'] = 0
 
-            if item['cityName'] is not None:
+            if item.get('cityName') is not None:
                 item['cityId'] = self.cities.get(item['cityName'].replace(' ', '').lower())
             else:
                 item['cityId'] = 0   
 
-            if item['districtName'] is not None:
+            if item.get('districtName') is not None:
                 item['districtId'] = self.districts.get(item['districtName'].replace(' ', '').lower())
             else:
                 item['districtId'] = 0                
@@ -224,12 +231,20 @@ class HomespiderPipeline:
         landArea = landArea * 10000 if item['landAreaUnit'] == 'HA' else landArea
         floorArea = float(item['floorArea']) if item['floorArea'] is not None else 0.00
         floorArea = floorArea * 10000 if item['floorAreaUnit'] == 'ha' else floorArea
-        insert_data = (uuid.uuid4().hex, item.get('houseId'), item.get('title'), item.get('url'), item.get('listing_no'), item.get('category'), int(item.get('regionId', 0)), item.get('regionName'), int(item.get('cityId', 0)), item.get('cityName'),
-                       int(item.get('districtId', 0)), item.get('districtName'), item.get('unitNumber'), item.get('streetNumber'), item.get('streetName'), item.get('slugRegion'), item.get('propertyType'), item.get('ownership'), item.get('salesMethod'), float(item.get('enquiryOver', 0)),
-                       item.get('auctionTime'), item.get('tenderTime'), item.get('deadlineTime'), float(item.get('rateableValue', 0)), float(item.get('indictativePrice', 0)), item.get('openHomeTimes'), landArea, floorArea, item.get('bedrooms'), item.get('bathrooms'), 
+        regionId = int(item.get('regionId')) if item.get('regionId') is not None else 0
+        cityId = int(item.get('cityId')) if item.get('cityId') is not None else 0
+        districtId = int(item.get('districtId')) if item.get('districtId') is not None else 0
+        enquiryOver = float(item.get('enquiryOver')) if item.get('enquiryOver') is not None else 0.00
+        rateableValue = float(item.get('rateableValue')) if item.get('rateableValue') is not None else 0.00
+        indictativePrice = float(item.get('indictativePrice')) if item.get('indictativePrice') is not None else 0.00
+        capitalValue = float(item.get('capitalValue')) if item.get('capitalValue') is not None else 0.00
+
+        insert_data = (uuid.uuid4().hex, item.get('houseId'), item.get('title'), item.get('url'), item.get('listing_no'), item.get('category'), regionId, item.get('regionName'), cityId, item.get('cityName'),
+                       districtId, item.get('districtName'), item.get('unitNumber'), item.get('streetNumber'), item.get('streetName'), item.get('slugRegion'), item.get('propertyType'), item.get('ownership'), item.get('salesMethod'), enquiryOver,
+                       item.get('auctionTime'), item.get('tenderTime'), item.get('deadlineTime'), rateableValue, indictativePrice, item.get('openHomeTimes'), landArea, floorArea, item.get('bedrooms'), item.get('bathrooms'), 
                        item.get('rooms'), item.get('parkingMainRoof'), item.get('parkingFreestanding'), item.get('parkingSpaces'), item.get('exteriorMaterial'), item.get('roofMaterial'), item.get('buildingAge'), item.get('otherFacilities'), item.get('englishDescription'), item.get('primarySchool'), 
                        item.get('intermediateSchool'), item.get('secondarySchool'), item.get('childCares'), item.get('floorPlanPhotos'), item.get('videoSrc'), item.get('latitude'), item.get('longtitude'), item.get('address'), item.get('agent'), item.get('agents'), 
-                       item.get('agency'), item.get('features'), item.get('auctionAddress'), item.get('detail_address'), float(item.get('capitalValue', 0)), item.get('subtitle'), item.get('pubished_date'), is_new_insert, json.dumps(item.get('photos'))
+                       item.get('agency'), item.get('features'), item.get('auctionAddress'), item.get('detail_address'), capitalValue, item.get('subtitle'), item.get('pubished_date'), is_new_insert, json.dumps(item.get('photos'))
                     )        
         self.insert_data_items.append(insert_data)
         self.item_data_count += 1

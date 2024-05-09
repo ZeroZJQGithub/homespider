@@ -35,6 +35,8 @@ class HomeDefferredSpider(scrapy.Spider):
     #example: https://platform.realestate.co.nz/search/v1/childcares?filter[ids][]=bbbbbbs0c&filter[ids][]=bbbbbbyxc&filter[ids][]=bbbbbbXyc&filter[ids][]=bbbbbb20c&filter[ids][]=bbbbbbryc&filter[ids][]=bbbbbbb0c&filter[ids][]=bbbbbbvxc&filter[ids][]=bbbbbbQvc&filter[ids][]=bbbbbbP4&filter[ids][]=bbbbbbKxc&filter[ids][]=bbbbbbHwc&filter[ids][]=bbbbbbm0c&filter[ids][]=bbbbbbl0c&filter[ids][]=bbbbbbBwc&filter[ids][]=bbbbbbPzc&filter[ids][]=bbbbbbP1c&filter[ids][]=bbbbbbKwc&filter[ids][]=bbbbbbBxc&filter[ids][]=bbbbbbg5&filter[ids][]=bbbbbb0wc&filter[ids][]=bbbbbb5wc&filter[ids][]=bbbbbbZwc&filter[ids][]=bbbbbbLyc&filter[ids][]=bbbbbbnxc&filter[ids][]=bbbbbbR4&filter[ids][]=bbbbbbr0c&filter[ids][]=bbbbbbz0c&filter[ids][]=bbbbbbFwc&filter[ids][]=bbbbbbf5&filter[ids][]=bbbbbbxxc&page[limit]=30
     childcares_base_url = "https://platform.realestate.co.nz/search/v1/childcares?"
 
+    latest_request_page = 1
+
     def __init__(self, url=None, **kwargs):
         super().__init__(**kwargs)
         self.spider_url = url

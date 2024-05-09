@@ -15,7 +15,6 @@ region_index = -1
 category_index = -1
 
 
-
 def start_spider():
     global region_index, category_index, nz_regions, house_categories, root_url
     scrapy.utils.project.inside_project = lambda: True
@@ -28,11 +27,12 @@ def start_spider():
         os.system("> scrapy.log")
         os.system(f'scrapy crawl home_defferred -a url={url}')
     else:
-        pass
+        category_index = -1
+        region_index = -1
 
 if __name__ == '__main__':
     scheduler = BlockingScheduler()
-    trigger = IntervalTrigger(hours=5, start_date=datetime.now())
+    trigger = IntervalTrigger(hours=2, start_date=datetime.now())
     job = scheduler.add_job(start_spider, trigger)
     print('Press Ctrl+{0} to exit'.format('Break' if os.name == 'nt' else 'C'))
     try:
