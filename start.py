@@ -25,6 +25,7 @@ def start_spider():
     if category_index < 4:
         url = f'{root_url}/{house_categories[category_index]}/sale/{nz_regions[region_index]}?by=latest'
         print(f'The current spider url is: {url}')
+        os.system("> scrapy.log")
         os.system(f'scrapy crawl home_defferred -a url={url}')
     else:
         pass
