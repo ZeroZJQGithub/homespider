@@ -9,6 +9,7 @@ import scrapy
 from itemadapter import ItemAdapter
 from scrapy.exceptions import DropItem
 from scrapy.pipelines.images import ImagesPipeline
+from datetime import datetime
 
 import pymysql
 import json
@@ -21,7 +22,7 @@ item_images_path = []
 class HomespiderPipeline:
     def __init__(self, spider_category, spider_region, max_unsold_house_id, db_settings=None) -> None:
         self.sale_methods = ['negotiation', 'auction', 'tender', 'deadline_sale', 'poa', 'offers']
-        self.homue_sale_methods = ['negotiation', 'auction', 'tender', 'deadline_sale']
+        self.homue_sale_methods = ['negotiation', 'auction', 'tender', 'deadline_sale', 'asking_price', 'enquiries_over']
         self.property_types = {'house': 'house', 'apartment': 'apartment', 'unit' : 'unit', 'lifestyle_property' : 'lifestyle_dwelling', 'townhouse' : 'townhouse', 'section' : 'section', 'lifestyle_section': 'lifestyle_section', 'studio': 'studio'}
         self.ownerships = ['freehold', 'leasehold', 'cross_lease', 'unit_title', 'company_share']
         self.spider_category = spider_category
@@ -159,31 +160,52 @@ class HomespiderPipeline:
             else:
                 item['agent'] = []
 
+
+            priceCode = item.get('priceCode')
             priceDisplay = item.get('priceDisplay')
             priceDisplay = priceDisplay.replace(' ', '_').lower()
-            if priceDisplay in self.sale_methods:
-                if priceDisplay in self.homue_sale_methods:
+            if priceCode == 1 or priceCode == 8:
+                item['salesMethod'] = 'asking_price'
+                item['askingPrice'] = re.findall(r'\d+', priceDisplay.replace(',', ''))[0]
+            elif priceCode == 4:
+                item['salesMethod'] = 'tender'
+            elif priceCode == 11 or priceCode == 13:
+                item['salesMethod'] = 'enquiries_over'
+                item['enquiriesOver'] = re.findall(r'\d+', priceDisplay.replace(',', ''))[0]
+            elif priceCode == 15:
+                item['salesMethod'] = 'negotiation'
+                item['negotiableFrom'] = re.findall(r'\d+', priceDisplay.replace(',', ''))[0]
+            elif priceCode == 16:
+                item['salesMethod'] = 'tender'
+                item['tenderOffersOver'] = re.findall(r'\d+', priceDisplay.replace(',', ''))[0]
+            else:
+                if priceDisplay in self.sale_methods:
                     item['salesMethod'] = priceDisplay
                 else:
-                    item['salesMethod'] = 'others'
-            else:
-                item['salesMethod'] = 'asking_price'
-                item['enquiryOver'] = re.findall(r'\d+', priceDisplay.replace(',', ''))[0]
+                    item['salesMethod'] = None
+            
+            # priceDisplay = priceDisplay.replace(' ', '_').lower()
+            # if priceDisplay in self.sale_methods:
+            #     if priceDisplay in self.homue_sale_methods:
+            #         item['salesMethod'] = priceDisplay
+            #     else:
+            #         item['salesMethod'] = 'others'
+            # else:
+            #     item['salesMethod'] = 'asking_price'
+            #     item['enquiryOver'] = re.findall(r'\d+', priceDisplay.replace(',', ''))[0]
 
-            propertyType = item.get('propertyType')
-            if propertyType is not None:
-                propertyType = propertyType.replace(' ', '_').lower()
-                if propertyType in self.property_types.keys():
-                    item['propertyType'] = self.property_types.get(propertyType)
-                else:
-                    pass
+            # propertyType = item.get('propertyType')
+            # if propertyType is not None:
+            #     propertyType = propertyType.replace(' ', '_').lower()
+            #     if propertyType in self.property_types.keys():
+            #         item['propertyType'] = self.property_types.get(propertyType)
+            #     else:
+            #         pass
 
             if (item.get('ownership') is not None) and (item['ownership'] <= 5):
                 item['ownership'] = self.ownerships[item['ownership'] - 1]
-            else:
-                item['ownership'] = self.ownerships[4]
 
-            openHomeTimes = item.get('openHomeTimes')
+            openHomeTimes = item.get('openHomeTimes', [])
             newOpenHomeTimes = []
             if len(openHomeTimes) != 0:
                 for openHomeTime in openHomeTimes:
@@ -204,21 +226,36 @@ class HomespiderPipeline:
             if item.get('districtName') is not None:
                 item['districtId'] = self.districts.get(item['districtName'].replace(' ', '').lower())
             else:
-                item['districtId'] = 0                
+                item['districtId'] = 0    
 
-            item['otherFacilities'] = json.dumps(item['otherFacilities'])
-            item['videoSrc'] = json.dumps(item['videoSrc'])
-            item['floorPlanPhotos'] = json.dumps(item['floorPlanPhotos'])
-            item['openHomeTimes'] = json.dumps(item['openHomeTimes'])
-            item['primarySchool'] = json.dumps(item['primarySchool'])
-            item['intermediateSchool'] = json.dumps(item['intermediateSchool'])
-            item['secondarySchool'] = json.dumps(item['secondarySchool'])
-            item['childCares'] = json.dumps(item['childCares'])
-            item['features'] = json.dumps(item['features'])
-            item['agents'] = json.dumps(item['agents'])
-            item['detail_address'] = json.dumps(item['detail_address'])
-            item['agency'] = json.dumps(item['agency'])
-            item['agent'] = json.dumps(item['agent'])
+            if item.get('hasSwimmingPool') == 'true':
+                item['amenities'] = 'swimming_pool'  
+
+            if item.get('capitalValue') is not None:
+                item['capitalValueUnavailable'] = 1
+            else:
+                item['capitalValueUnavailable'] = 0  
+
+            created_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            item['created_at'] = created_at      
+            videoSrcs = item.get('videoSrc', [])
+            if (videoSrcs is not None) and (len(videoSrcs) > 0):
+                item['videoSrc'] = videoSrcs[0].get('url')
+            else:
+                item['videoSrc'] = None
+            item['otherFacilities'] = json.dumps(item.get('otherFacilities', []))
+            # item['videoSrc'] = json.dumps(item['videoSrc'])
+            item['floorPlanPhotos'] = json.dumps(item.get('floorPlanPhotos', []))
+            item['openHomeTimes'] = json.dumps(item.get('openHomeTimes', []))
+            item['primarySchool'] = json.dumps(item.get('primarySchool', []))
+            item['intermediateSchool'] = json.dumps(item.get('intermediateSchool', []))
+            item['secondarySchool'] = json.dumps(item.get('secondarySchool', []))
+            item['childCares'] = json.dumps(item.get('childCares', []))
+            # item['features'] = json.dumps(item['features'])
+            item['agents'] = json.dumps(item.get('agents', []))
+            item['detail_address'] = json.dumps(item.get('detail_address', []))
+            item['agency'] = json.dumps(item.get('agency', []))
+            item['agent'] = json.dumps(item.get('agent', []))
 
             self.process_insert_data(item)
             if self.item_data_count == 100:
@@ -227,41 +264,47 @@ class HomespiderPipeline:
 
     def process_insert_data(self, item):
         is_new_insert = 1
-        landArea = float(item['landArea']) if item['landArea'] is not None else 0.00
-        landArea = landArea * 10000 if item['landAreaUnit'] == 'HA' else landArea
-        floorArea = float(item['floorArea']) if item['floorArea'] is not None else 0.00
-        floorArea = floorArea * 10000 if item['floorAreaUnit'] == 'ha' else floorArea
+        landArea = float(item.get('landArea')) if item.get('landArea') is not None else 0.00
+        landArea = landArea * 10000 if item.get('landAreaUnit') == 'HA' else landArea
+        floorArea = float(item.get('floorArea')) if item.get('floorArea') is not None else 0.00
+        floorArea = floorArea * 10000 if item.get('floorAreaUnit') == 'ha' else floorArea
         regionId = int(item.get('regionId')) if item.get('regionId') is not None else 0
         cityId = int(item.get('cityId')) if item.get('cityId') is not None else 0
         districtId = int(item.get('districtId')) if item.get('districtId') is not None else 0
-        enquiryOver = float(item.get('enquiryOver')) if item.get('enquiryOver') is not None else 0.00
-        rateableValue = float(item.get('rateableValue')) if item.get('rateableValue') is not None else 0.00
-        indictativePrice = float(item.get('indictativePrice')) if item.get('indictativePrice') is not None else 0.00
+        enquiriesOver = float(item.get('enquiryOver')) if item.get('enquiryOver') is not None else 0.00
+        expectedSalePrice = float(item.get('expectedSalePrice')) if item.get('expectedSalePrice') is not None else 0.00
+        negotiableFrom = float(item.get('negotiableFrom')) if item.get('negotiableFrom') is not None else 0.00
+        askingPrice = float(item.get('askingPrice')) if item.get('askingPrice') is not None else 0.00
         capitalValue = float(item.get('capitalValue')) if item.get('capitalValue') is not None else 0.00
+        tenderOffersOver = float(item.get('tenderOffersOver')) if item.get('tenderOffersOver') is not None else 0.00
+        buildingAge = int(item.get('buildingAge')) if item.get('buildingAge') is not None else 0
 
         insert_data = (uuid.uuid4().hex, item.get('houseId'), item.get('title'), item.get('url'), item.get('listing_no'), item.get('category'), regionId, item.get('regionName'), cityId, item.get('cityName'),
-                       districtId, item.get('districtName'), item.get('unitNumber'), item.get('streetNumber'), item.get('streetName'), item.get('slugRegion'), item.get('propertyType'), item.get('ownership'), item.get('salesMethod'), enquiryOver,
-                       item.get('auctionTime'), item.get('tenderTime'), item.get('deadlineTime'), rateableValue, indictativePrice, item.get('openHomeTimes'), landArea, floorArea, item.get('bedrooms'), item.get('bathrooms'), 
-                       item.get('rooms'), item.get('parkingMainRoof'), item.get('parkingFreestanding'), item.get('parkingSpaces'), item.get('exteriorMaterial'), item.get('roofMaterial'), item.get('buildingAge'), item.get('otherFacilities'), item.get('englishDescription'), item.get('primarySchool'), 
-                       item.get('intermediateSchool'), item.get('secondarySchool'), item.get('childCares'), item.get('floorPlanPhotos'), item.get('videoSrc'), item.get('latitude'), item.get('longtitude'), item.get('address'), item.get('agent'), item.get('agents'), 
-                       item.get('agency'), item.get('features'), item.get('auctionAddress'), item.get('detail_address'), capitalValue, item.get('subtitle'), item.get('pubished_date'), is_new_insert, json.dumps(item.get('photos'))
+                       districtId, item.get('districtName'), item.get('unitNumber'), item.get('streetNumber'), item.get('streetName'), item.get('slugRegion'), item.get('propertyType'), item.get('ownership'), item.get('salesMethod'), enquiriesOver,
+                       item.get('auctionTime'), item.get('tenderTime'), item.get('deadlineTime'), item.get('openHomeTimes'), landArea, floorArea, item.get('bedrooms'), item.get('bathrooms'), item.get('garageParking'), expectedSalePrice, 
+                       item.get('offStreetParking'), buildingAge, item.get('otherFacilities'), item.get('englishDescription'), item.get('primarySchool'), item.get('intermediateSchool'), item.get('secondarySchool'), item.get('childCares'), item.get('floorPlanPhotos'), item.get('videoSrc'), 
+                       item.get('latitude'), item.get('longtitude'), item.get('address'), item.get('agent'), item.get('agents'), item.get('agency'), item.get('auctionAddress'), item.get('detail_address'), capitalValue, item.get('subtitle'), 
+                       item.get('pubished_date'), is_new_insert, json.dumps(item.get('photos')), item.get('amenities'), negotiableFrom, askingPrice, tenderOffersOver, item.get('landAreaUnit'), item.get('floorAreaUnit'), item.get('capitalValueUnavailable'),
+                       item.get('priceDisplay'), item.get('priceCode'), item.get('propertyShortId'), item.get('created_at')
                     )        
         self.insert_data_items.append(insert_data)
         self.item_data_count += 1
 
     def insert_items_to_database(self, insert_data):
         sql = "INSERT INTO homue_import_houses(house_id, origin_house_id, title, url, listing_no, category, regionId, regionName, cityId, cityName, " + \
-              "districtId, districtName, unitNumber, streetNumber, streetName, slugRegion, propertyType, ownership, salesMethod, enquiryOver, " + \
-              "auctionTime, tenderTime, deadlineTime, rateableValue, indictativePrice, openHomeTimes, landArea, floorArea, bedrooms, bathrooms, " + \
-              "rooms, parkingMainRoof, parkingFreestanding, parkingSpaces, exteriorMaterial, roofMaterial, buildingAge, otherFacilities, englishDescription, primarySchool, " + \
-              "intermediateSchool, secondarySchool, childCares, floorPlanPhotos, videoSrc, latitude, longtitude, address, agent, agents, " + \
-              "agency, features, auctionAddress, detail_address, capitalValue, subtitle, pubished_date, is_new_insert, photos" + \
+              "districtId, districtName, unitNumber, streetNumber, streetName, slugRegion, propertyType, ownership, salesMethod, enquiriesOver, " + \
+              "auctionTime, tenderTime, deadlineTime, openHomeTimes, landArea, floorArea, bedrooms, bathrooms, garageParking, expectedSalePrice, " + \
+              "offStreetParking, buildingAge, otherFacilities, englishDescription, primarySchool, intermediateSchool, secondarySchool, childCares, floorPlanPhotos, videoSrc, " + \
+              "latitude, longtitude, address, agent, agents, agency, auctionAddress, detail_address, capitalValue, subtitle, " + \
+              "pubished_date, is_new_insert, photos, amenities, negotiableFrom, askingPrice, tenderOffersOver, landAreaUnit, floorAreaUnit, capitalValueUnavailable, " + \
+              "priceDisplay, priceCode, propertyShortId, created_at" + \
               ") VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, " + \
               "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, " + \
               "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, " + \
               "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, " + \
               "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, " + \
-              "%s, %s, %s, %s, %s, %s, %s, %s, %s)"
+              "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, " + \
+              "%s, %s, %s, %s)"
         cursor = self.conn.cursor()
         cursor.executemany(sql, insert_data)
         self.conn.commit()

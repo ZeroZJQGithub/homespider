@@ -51,11 +51,11 @@ class HomeDefferredSpider(scrapy.Spider):
             database='homue_api',
             port=3366
         )
-        sql = f"SELECT house_id FROM homue_import_houses WHERE category='{self.spider_category}' AND slugRegion='{self.spider_region}' ORDER BY house_id DESC LIMIT 1"
+        sql = f"SELECT MAX(origin_house_id) as max_house_id FROM homue_import_houses WHERE category='{self.spider_category}' AND slugRegion='{self.spider_region}'"
         cursor = self.conn.cursor()
         cursor.execute(sql)
         result = cursor.fetchone()
-        if result is not None:
+        if result[0] is not None:
             self.max_unsold_house_id = result[0]
         else:
             self.max_unsold_house_id = ''
@@ -92,6 +92,8 @@ class HomeDefferredSpider(scrapy.Spider):
             detail_page_link = house.css("div.tile--body>div.relative:last-child>a::attr(href)").get()
             if detail_page_link is not None:
                 house_id = detail_page_link.split("/")[1]
+                logging.info(f"current house id: {house_id}")
+                logging.info(f"max unsold house id: {self.max_unsold_house_id}")
                 if house_id <= self.max_unsold_house_id:
                     self.has_smaller_house_id = True
                 else:
@@ -105,7 +107,7 @@ class HomeDefferredSpider(scrapy.Spider):
             if next_page is not None:
                 self.latest_request_page = self.latest_request_page + 1
                 next_page_url = f'{self.root_url}/{self.spider_category}/sale/{self.spider_region}?by=latest&page={self.latest_request_page}'
-                logging.info(next_page_url)
+                # logging.info(next_page_url)
                 yield Request(url=next_page_url, headers=self.realestate_header, callback=self.parse)
     
     async def parse_detail(self, response):
@@ -118,50 +120,44 @@ class HomeDefferredSpider(scrapy.Spider):
         house_item = HomespiderItem()
         house_item['url'] = house_attributes.get('website-full-url')
         house_item['houseId'] = data.get('id')
-        house_item['listing_no'] = house_attributes.get('listing-no')
         house_item['category'] = self.spider_category
+        house_item['propertyType'] = house_attributes.get('listing-sub-type')
+        house_item['ownership'] = house_attributes.get('title-type')
+        house_item['openHomeTimes'] = house_attributes.get('open-homes')
         house_item['regionName'] = detail_address.get('region')
         house_item['cityName'] = detail_address.get('district')
         house_item['districtName'] = detail_address.get('suburb')
-        house_item['streetName'] = detail_address.get('street')
-        house_item['streetNumber'] = detail_address.get('street-number')
         house_item['unitNumber'] = detail_address.get('unit-number')
-        house_item['propertyType'] = house_attributes.get('listing-sub-type')
-        house_item['ownership'] = house_attributes.get('title-type')
+        house_item['streetNumber'] = detail_address.get('street-number')
+        house_item['streetName'] = detail_address.get('street')
+        house_item['title'] = full_address if len(full_address) != 0 else house_attributes.get('header')
+        house_item['englishDescription'] = house_attributes.get('description')
+        house_item['landArea'] = house_attributes.get('land-area')
+        house_item['landAreaUnit'] = house_attributes.get('land-area-unit')
+        house_item['floorArea'] = house_attributes.get('floor-area')
+        house_item['floorAreaUnit'] = house_attributes.get('floor-area-unit')
+        house_item['bedrooms'] = house_attributes.get('bedroom-count')
+        house_item['bathrooms'] = house_attributes.get('bathroom-count')        
+        house_item['listing_no'] = house_attributes.get('listing-no')
+        house_item['garageParking'] = house_attributes.get('parking-garage-count')
+        house_item['offStreetParking'] = house_attributes.get('parking-covered-count') 
+        house_item['hasSwimmingPool'] = house_attributes.get('has-swimming-pool')
         house_item['priceDisplay'] = house_attributes.get('price-display')
         house_item['priceCode'] = house_attributes.get('price-code')
         house_item['auctionTime'] = house_attributes.get('auction-time')
         house_item['auctionAddress'] = house_attributes.get('auction-location')
         house_item['tenderTime'] = house_attributes.get('tender-date')
         house_item['deadlineTime'] = house_attributes.get('deadline-date')
-        house_item['openHomeTimes'] = house_attributes.get('open-homes')
-        house_item['landArea'] = house_attributes.get('land-area')
-        house_item['landAreaUnit'] = house_attributes.get('land-area-unit')
-        house_item['floorArea'] = house_attributes.get('floor-area')
-        house_item['floorAreaUnit'] = house_attributes.get('floor-area-unit')
-        house_item['bedrooms'] = house_attributes.get('bedroom-count')
-        house_item['bathrooms'] = house_attributes.get('bathroom-count')
-        house_item['parkingMainRoof'] = house_attributes.get('parking-garage-count')
-        house_item['parkingFreestanding'] = house_attributes.get('parking-other-count')   
-        house_item['parkingSpaces'] = house_attributes.get('parking-covered-count')  
-        # house_item['exteriorMaterial'] = house_attributes.get('parking-covered-count')
-        # house_item['roofMaterial'] = house_attributes.get('parking-covered-count')
         house_item['otherFacilities'] = house_attributes.get('other-features')  
-        house_item['title'] = full_address if len(full_address) != 0 else house_attributes.get('header')
-        house_item['englishDescription'] = house_attributes.get('description')
-        # house_item['floorPlanPhotos'] = house_attributes.get('floorplans')
         house_item['videoSrc'] = house_attributes.get('videos')
         house_item['latitude'] = detail_address.get('latitude')
         house_item['longtitude'] = detail_address.get('longitude')
         house_item['address'] = full_address
         house_item['subtitle'] = house_attributes.get('header')
-        house_item['features'] = house_attributes.get('features')
+        # house_item['features'] = house_attributes.get('features')
         house_item['detail_address'] = detail_address
         house_item['slugRegion'] = self.spider_region
-        # house_item['is_spided'] = 0
 
-        # house_item['agency'] = included_data[0].get('attributes')
-        # house_item['agent'] = included_data[1].get('attributes')
         agents = []
         for item in included_data:
             if item['type'] == 'agent':
@@ -182,80 +178,76 @@ class HomeDefferredSpider(scrapy.Spider):
         house_item['photos'] = photos
 
         floorPlanPhotos = []
-        if house_attributes.get('floorplans') != "":
+        # logging.info(house_attributes.get('floorplans'))
+        if len(house_attributes.get('floorplans')) != 0:
             for photo_item in house_attributes.get('floorplans'):
                 photo = {"original_name": "", "url": photo_item.get('url')}
                 floorPlanPhotos.append(photo)
-            house_item['floorPlanPhotos'] = floorPlanPhotos
+        house_item['floorPlanPhotos'] = floorPlanPhotos
 
-        child_cares = house_attributes.get('child-cares')
-        # logging.info(f'child_cares: {child_cares}')
-        # house_item['childCares'] = child_cares
 
         propertyShortId = house_attributes.get('property-short-id')
         house_item['propertyShortId'] = propertyShortId
-        schools = house_attributes.get('schools')
-        if len(schools) != 0:
-            schools_params = {
-                'filter[geocode]': f"{detail_address.get('longitude')},{detail_address.get('latitude')}",
-                'filter[includeNearby]': 'true',
-                'page[responseType]': 'no-geo',
-                'page[limit]': 50
-            }
-            schools_url = self.schools_base_url + parse.urlencode(schools_params)
-            schools_request = Request(url=schools_url, headers=self.realestate_header)
-            schools_deferred = self.crawler.engine.download(schools_request)
-            schools_response = await maybe_deferred_to_future(schools_deferred)
-            if schools_response is not None:
-                schools_json_data = json.loads(schools_response.text)
-                schools_data = schools_json_data['data']
-                primarySchool = []
-                intermediateSchool = []
-                secondarySchool = []
-                for school in schools_data:
-                    school_attributes = school.get('attributes')
-                    organization_type = school_attributes.get('organization-type')
-                    school_data = {
-                        'organization_name': school_attributes.get('organization-name'),
-                        'coed_status': school_attributes.get('coed-status'),
-                        'geo_radius': school_attributes.get('geo-radius'),
-                        'in_zone': school_attributes.get('in-zone'),
-                        'eqi': school_attributes.get('eqi'),
-                        'organization_type': organization_type,
-                        'address': school_attributes.get('address'),
-                        'origin_attributes': school_attributes
-                    }
-                    if 'Primary' in organization_type:
-                        primarySchool.append(school_data)
-                    elif 'Intermediate' in organization_type:
-                        intermediateSchool.append(school_data)
-                    else:
-                        secondarySchool.append(school_data)
 
-                house_item['primarySchool'] = primarySchool
-                house_item['intermediateSchool'] = intermediateSchool
-                house_item['secondarySchool'] = secondarySchool
-        else:
-            house_item['primarySchool'] = []
-            house_item['intermediateSchool'] = []
-            house_item['secondarySchool'] = []
+        if detail_address.get('geopoint') != "":
+            schools = house_attributes.get('schools')
+            if len(schools) != 0:
+                schools_params = {
+                    'filter[geocode]': f"{detail_address.get('longitude')},{detail_address.get('latitude')}",
+                    'filter[includeNearby]': 'true',
+                    'page[responseType]': 'no-geo',
+                    'page[limit]': 50
+                }
+                schools_url = self.schools_base_url + parse.urlencode(schools_params)
+                schools_request = Request(url=schools_url, headers=self.realestate_header)
+                schools_deferred = self.crawler.engine.download(schools_request)
+                schools_response = await maybe_deferred_to_future(schools_deferred)
+                if schools_response is not None:
+                    schools_json_data = json.loads(schools_response.text)
+                    schools_data = schools_json_data['data']
+                    primarySchool = []
+                    intermediateSchool = []
+                    secondarySchool = []
+                    for school in schools_data:
+                        school_attributes = school.get('attributes')
+                        organization_type = school_attributes.get('organization-type')
+                        school_data = {
+                            'organization_name': school_attributes.get('organization-name'),
+                            'coed_status': school_attributes.get('coed-status'),
+                            'geo_radius': school_attributes.get('geo-radius'),
+                            'in_zone': school_attributes.get('in-zone'),
+                            'eqi': school_attributes.get('eqi'),
+                            'organization_type': organization_type,
+                            'address': school_attributes.get('address'),
+                            'origin_attributes': school_attributes
+                        }
+                        if 'Primary' in organization_type:
+                            primarySchool.append(school_data)
+                        elif 'Intermediate' in organization_type:
+                            intermediateSchool.append(school_data)
+                        else:
+                            secondarySchool.append(school_data)
 
-        if child_cares is not None:
-            child_cares_params = ''
-            for child_care in child_cares:
-                child_cares_params += f"filter[ids][]={child_care.get('short-id')}&"
+                    house_item['primarySchool'] = primarySchool
+                    house_item['intermediateSchool'] = intermediateSchool
+                    house_item['secondarySchool'] = secondarySchool                  
 
-            child_cares_params += 'page[limit]=50'
-            child_cares_params = child_cares_params.replace('[', '%5B').replace(']', '%5D')
-            child_cares_url = self.childcares_base_url + child_cares_params
-            child_cares_request = Request(url=child_cares_url, headers=self.realestate_header)
-            child_cares_deferred = self.crawler.engine.download(child_cares_request)
-            child_cares_response = await maybe_deferred_to_future(child_cares_deferred)
-            child_cares_json_data = json.loads(child_cares_response.text)
-            child_cares_data = child_cares_json_data['data']
-            house_item['childCares'] = child_cares_data
-        else:
-            house_item['childCares'] = []
+            child_cares = house_attributes.get('child-cares')
+            if child_cares is not None:
+                child_cares_params = ''
+                for child_care in child_cares:
+                    child_cares_params += f"filter[ids][]={child_care.get('short-id')}&"
+
+                child_cares_params += 'page[limit]=50'
+                child_cares_params = child_cares_params.replace('[', '%5B').replace(']', '%5D')
+                child_cares_url = self.childcares_base_url + child_cares_params
+                child_cares_request = Request(url=child_cares_url, headers=self.realestate_header)
+                child_cares_deferred = self.crawler.engine.download(child_cares_request)
+                child_cares_response = await maybe_deferred_to_future(child_cares_deferred)
+                child_cares_json_data = json.loads(child_cares_response.text)
+                child_cares_data = child_cares_json_data['data']
+                house_item['childCares'] = child_cares_data 
+        
 
         if propertyShortId is not None:
             property_url = self.properties_base_url + propertyShortId
