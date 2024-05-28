@@ -42,71 +42,54 @@ class HomeDefferredSpider(scrapy.Spider):
         self.spider_url = url
         urls = url.split('/')
         self.spider_category = urls[3]
-        self.spider_region = urls[-1].split('?')[0]
+        # self.spider_region = urls[-1].split('?')[0]
+        self.spider_region = urls[5]
 
-        self.conn = pymysql.connect(
-            host='192.168.150.128',
-            user='root',
-            password='123456',
-            database='homue_api',
-            port=3366
-        )
-        sql = f"SELECT MAX(origin_house_id) as max_house_id FROM homue_import_houses WHERE category='{self.spider_category}' AND slugRegion='{self.spider_region}'"
-        cursor = self.conn.cursor()
-        cursor.execute(sql)
-        result = cursor.fetchone()
-        if result[0] is not None:
-            self.max_unsold_house_id = result[0]
-        else:
-            self.max_unsold_house_id = ''
-        cursor.close()
-        self.conn.close()
-
+        # self.conn = pymysql.connect(
+        #     host='192.168.117.128',
+        #     user='root',
+        #     password='123456',
+        #     database='homue_api',
+        #     port=3366
+        # )
+        # sql = f"SELECT MAX(origin_house_id) as max_house_id FROM homue_import_houses WHERE category='{self.spider_category}' AND slugRegion='{self.spider_region}'"
+        # cursor = self.conn.cursor()
+        # cursor.execute(sql)
+        # result = cursor.fetchone()
+        # if result[0] is not None:
+        #     self.max_unsold_house_id = result[0]
+        # else:
+        #     self.max_unsold_house_id = ''
+        # cursor.close()
+        # self.conn.close()
+        self.max_unsold_house_id = ''
         self.has_smaller_house_id = False
 
     def start_requests(self):
         yield Request(url=self.spider_url, headers=self.realestate_header, callback=self.parse)
 
     def parse(self, response):
-        # if self.spider_category == 'business':
-        #     for house in response.css('div.listing-tile'):
-        #         detail_page_link = house.css("div.tile--body>div.relative:last-child>a::attr(href)").get()
-        #         if detail_page_link is not None:
-        #             house_id = detail_page_link.split("/")[1]
-        #             if house_id <= self.max_unsold_house_id:
-        #                 pass
-        #             else:
-        #                 attributes_api_url = self.attributes_base_url + house_id + '?include=' + parse.quote(self.attributes_url_params)
-        #                 yield Request(attributes_api_url, headers=self.realestate_header, callback=self.parse_detail)
-        # else:
-        #     for house in response.css('div.listing-tile'):
-        #         detail_page_link = house.css('div.tile--body>div.relative:last-child>a::attr(href)').get()
-        #         if detail_page_link is not None:
-        #             house_id = detail_page_link.split("/")[1]
-        #             if house_id <= self.max_unsold_house_id:
-        #                 pass
-        #             else:
-        #                 attributes_api_url = self.attributes_base_url + house_id + '?include=' + parse.quote(self.attributes_url_params)
-        #                 yield Request(attributes_api_url, headers=self.realestate_header, callback=self.parse_detail)
         for house in response.css('div.listing-tile'):
             detail_page_link = house.css("div.tile--body>div.relative:last-child>a::attr(href)").get()
             if detail_page_link is not None:
                 house_id = detail_page_link.split("/")[1]
-                logging.info(f"current house id: {house_id}")
-                logging.info(f"max unsold house id: {self.max_unsold_house_id}")
+                # logging.info(f"current house id: {house_id}")
+                # logging.info(f"max unsold house id: {self.max_unsold_house_id}")
                 if house_id <= self.max_unsold_house_id:
                     self.has_smaller_house_id = True
                 else:
                     attributes_api_url = self.attributes_base_url + house_id + '?include=' + parse.quote(self.attributes_url_params)
                     yield Request(attributes_api_url, headers=self.realestate_header, callback=self.parse_detail)
-
+                # attributes_api_url = self.attributes_base_url + house_id + '?include=' + parse.quote(self.attributes_url_params)
+                # yield Request(attributes_api_url, headers=self.realestate_header, callback=self.parse_detail)
         if self.has_smaller_house_id == True:
             pass
         else:
             next_page = response.css('div.paginated-items>div.paginated-items__control:last-child a').get()
             if next_page is not None:
                 self.latest_request_page = self.latest_request_page + 1
-                next_page_url = f'{self.root_url}/{self.spider_category}/sale/{self.spider_region}?by=latest&page={self.latest_request_page}'
+                # next_page_url = f'{self.root_url}/{self.spider_category}/sale/{self.spider_region}?by=latest&page={self.latest_request_page}'
+                next_page_url = f'{self.spider_url}&page={self.latest_request_page}'
                 # logging.info(next_page_url)
                 yield Request(url=next_page_url, headers=self.realestate_header, callback=self.parse)
     
@@ -158,16 +141,18 @@ class HomeDefferredSpider(scrapy.Spider):
         house_item['detail_address'] = detail_address
         house_item['slugRegion'] = self.spider_region
 
-        agents = []
-        for item in included_data:
-            if item['type'] == 'agent':
-                agents.append(item)
-                if len(agents) == 1:
-                    house_item['agent'] = item.get('attributes')
-            else:
-                house_item['agency'] = item.get('attributes')
+        
+        if included_data is not None:
+            agents = []
+            for item in included_data:
+                if item['type'] == 'agent':
+                    agents.append(item)
+                    if len(agents) == 1:
+                        house_item['agent'] = item.get('attributes')
+                else:
+                    house_item['agency'] = item.get('attributes')
+            house_item['agents'] = agents
 
-        house_item['agents'] = agents
         house_item['pubished_date'] = house_attributes.get('published-date')
 
         photos = []

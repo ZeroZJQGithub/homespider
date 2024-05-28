@@ -1,6 +1,7 @@
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 import scrapy
+import sys
 import os
 from datetime import datetime
 import scrapy.utils
@@ -24,8 +25,12 @@ def start_spider():
     if category_index < 4:
         url = f'{root_url}/{house_categories[category_index]}/sale/{nz_regions[region_index]}?by=latest'
         print(f'The current spider url is: {url}')
-        os.system("> scrapy.log")
-        os.system(f'scrapy crawl home_defferred -a url={url}')
+        if sys.platform.startswith('win32'):
+            os.system("type nul > scrapy.log")
+            os.system(f'python -m scrapy crawl home_defferred -a url={url}')
+        else:
+            os.system("> scrapy.log")
+            os.system(f'scrapy crawl home_defferred -a url={url}')
     else:
         category_index = -1
         region_index = -1

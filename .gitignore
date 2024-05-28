@@ -1,5 +1,5 @@
 /*.csv
 /scrapy.log
-/images
+/images*
 /homespider/__pycache__
 /homespider/spiders/__pycache__
