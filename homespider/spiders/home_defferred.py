@@ -42,28 +42,37 @@ class HomeDefferredSpider(scrapy.Spider):
         self.spider_url = url
         urls = url.split('/')
         self.spider_category = urls[3]
-        # self.spider_region = urls[-1].split('?')[0]
-        self.spider_region = urls[5]
+        if len(urls) >= 7:
+            self.spider_region = urls[5]
+        elif len(urls) <= 5:
+            self.spider_region = None
+        else:
+            self.spider_region = urls[-1].split('?')[0]
+        logging.info(self.spider_region)
 
-        # self.conn = pymysql.connect(
-        #     host='192.168.117.128',
-        #     user='root',
-        #     password='123456',
-        #     database='homue_api',
-        #     port=3366
-        # )
-        # sql = f"SELECT MAX(origin_house_id) as max_house_id FROM homue_import_houses WHERE category='{self.spider_category}' AND slugRegion='{self.spider_region}'"
-        # cursor = self.conn.cursor()
-        # cursor.execute(sql)
-        # result = cursor.fetchone()
-        # if result[0] is not None:
-        #     self.max_unsold_house_id = result[0]
-        # else:
-        #     self.max_unsold_house_id = ''
-        # cursor.close()
-        # self.conn.close()
-        self.max_unsold_house_id = ''
+        self.conn = pymysql.connect(
+            host='192.168.117.128',
+            user='root',
+            password='123456',
+            database='homue_api',
+            port=3366
+        )
+        sql = f"SELECT MAX(origin_house_id) as max_house_id FROM homue_import_houses WHERE category='{self.spider_category}'"
+        if self.spider_region is not None:
+            sql = f"SELECT MAX(origin_house_id) as max_house_id FROM homue_import_houses WHERE category='{self.spider_category}' AND slugRegion='{self.spider_region}'"
+        cursor = self.conn.cursor()
+        cursor.execute(sql)
+        result = cursor.fetchone()
+        if result[0] is not None:
+            self.max_unsold_house_id = result[0]
+        else:
+            self.max_unsold_house_id = ''
+        cursor.close()
+        self.conn.close()
+        # self.max_unsold_house_id = ''
         self.has_smaller_house_id = False
+        logging.info(f'query sql: {sql}')
+        logging.info(f'max_unsold_house_id: {self.max_unsold_house_id}')
 
     def start_requests(self):
         yield Request(url=self.spider_url, headers=self.realestate_header, callback=self.parse)
@@ -73,15 +82,11 @@ class HomeDefferredSpider(scrapy.Spider):
             detail_page_link = house.css("div.tile--body>div.relative:last-child>a::attr(href)").get()
             if detail_page_link is not None:
                 house_id = detail_page_link.split("/")[1]
-                # logging.info(f"current house id: {house_id}")
-                # logging.info(f"max unsold house id: {self.max_unsold_house_id}")
                 if house_id <= self.max_unsold_house_id:
                     self.has_smaller_house_id = True
                 else:
                     attributes_api_url = self.attributes_base_url + house_id + '?include=' + parse.quote(self.attributes_url_params)
                     yield Request(attributes_api_url, headers=self.realestate_header, callback=self.parse_detail)
-                # attributes_api_url = self.attributes_base_url + house_id + '?include=' + parse.quote(self.attributes_url_params)
-                # yield Request(attributes_api_url, headers=self.realestate_header, callback=self.parse_detail)
         if self.has_smaller_house_id == True:
             pass
         else:
@@ -139,7 +144,8 @@ class HomeDefferredSpider(scrapy.Spider):
         house_item['subtitle'] = house_attributes.get('header')
         # house_item['features'] = house_attributes.get('features')
         house_item['detail_address'] = detail_address
-        house_item['slugRegion'] = self.spider_region
+        house_item['slugRegion'] = detail_address.get('region-slug')
+        house_item['listing_type'] = house_attributes.get('listing-type')
 
         
         if included_data is not None:

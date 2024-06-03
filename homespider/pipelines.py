@@ -18,8 +18,6 @@ import logging
 import uuid
 import os
 
-item_images_path = []
-
 class HomespiderPipeline:
     def __init__(self, spider_category, spider_region, max_unsold_house_id, db_settings=None) -> None:
         self.sale_methods = ['negotiation', 'auction', 'tender', 'deadline_sale', 'poa', 'offers']
@@ -53,13 +51,6 @@ class HomespiderPipeline:
 
 
     def open_spider(self, spider):
-        # self.conn = pymysql.connect(
-        #     host='192.168.150.128',
-        #     user='root',
-        #     password='123456',
-        #     database='homue_api',
-        #     port=3366
-        # )
         # self.conn = pymysql.connect(
         #     host='homue-dev-mysql.ckdssrns2bi1.ap-southeast-2.rds.amazonaws.com',
         #     user='admin',
@@ -101,28 +92,11 @@ class HomespiderPipeline:
             nz_districts[row[2].replace(' ', '').lower()] = row[0]
 
         self.districts = nz_districts
-
-        # sql = f"SELECT * FROM last_spider_houses WHERE category='{self.spider_category}'"
-        # cursor.execute(sql)
-        # results = cursor.fetchall()
-        # last_spider_houses = []
-        # for row in results:
-        #     last_spider_houses.append(f"{row[1]}_{row[2]}")
-
-        # self.last_spider_houses = last_spider_houses
-        # sql = f"SELECT house_id FROM homue_import_houses WHERE category='{self.spider_category}' AND slugRegion='{self.spider_region}' ORDER BY house_id DESC LIMIT 1"
-        # cursor = self.conn.cursor()
-        # cursor.execute(sql)
-        # result = cursor.fetchone()
-        # self.max_unsold_house_id = result[0]
-        
         cursor.close()
         # self.conn.close()
 
     def close_spider(self, spider):
         if len(self.insert_data_items) == 0:
-            # self.insert_images_to_database()
-            # self.conn.close()
             pass
         else:
             self.insert_items_to_database(self.insert_data_items)
@@ -285,6 +259,7 @@ class HomespiderPipeline:
         capitalValue = float(item.get('capitalValue')) if item.get('capitalValue') is not None else 0.00
         tenderOffersOver = float(item.get('tenderOffersOver')) if item.get('tenderOffersOver') is not None else 0.00
         buildingAge = int(item.get('buildingAge')) if item.get('buildingAge') is not None else 0
+        listing_type = int(item.get('listing_type'))
 
         insert_data = (uuid.uuid4().hex, item.get('houseId'), item.get('title'), item.get('url'), item.get('listing_no'), item.get('category'), regionId, item.get('regionName'), cityId, item.get('cityName'),
                        districtId, item.get('districtName'), item.get('unitNumber'), item.get('streetNumber'), item.get('streetName'), item.get('slugRegion'), item.get('propertyType'), item.get('ownership'), item.get('salesMethod'), enquiriesOver,
@@ -292,52 +267,32 @@ class HomespiderPipeline:
                        item.get('offStreetParking'), buildingAge, item.get('otherFacilities'), item.get('englishDescription'), item.get('primarySchool'), item.get('intermediateSchool'), item.get('secondarySchool'), item.get('childCares'), item.get('floorPlanPhotos'), item.get('videoSrc'), 
                        item.get('latitude'), item.get('longtitude'), item.get('address'), item.get('agent'), item.get('agents'), item.get('agency'), item.get('auctionAddress'), item.get('detail_address'), capitalValue, item.get('subtitle'), 
                        item.get('pubished_date'), is_new_insert, json.dumps(item.get('photos')), item.get('amenities'), negotiableFrom, askingPrice, tenderOffersOver, item.get('landAreaUnit'), item.get('floorAreaUnit'), item.get('capitalValueUnavailable'),
-                       item.get('priceDisplay'), item.get('priceCode'), item.get('propertyShortId'), item.get('created_at')
+                       item.get('priceDisplay'), item.get('priceCode'), item.get('propertyShortId'), item.get('created_at'), listing_type
                     )        
         self.insert_data_items.append(insert_data)
         self.item_data_count += 1
 
     def insert_items_to_database(self, insert_data):
-        sql = "INSERT INTO homue_import_houses(house_id, origin_house_id, title, url, listing_no, category, regionId, regionName, cityId, cityName, " + \
+        sql = "INSERT IGNORE INTO homue_import_houses(house_id, origin_house_id, title, url, listing_no, category, regionId, regionName, cityId, cityName, " + \
               "districtId, districtName, unitNumber, streetNumber, streetName, slugRegion, propertyType, ownership, salesMethod, enquiriesOver, " + \
               "auctionTime, tenderTime, deadlineTime, openHomeTimes, landArea, floorArea, bedrooms, bathrooms, garageParking, expectedSalePrice, " + \
               "offStreetParking, buildingAge, otherFacilities, englishDescription, primarySchool, intermediateSchool, secondarySchool, childCares, floorPlanPhotos, videoSrc, " + \
               "latitude, longtitude, address, agent, agents, agency, auctionAddress, detail_address, capitalValue, subtitle, " + \
               "pubished_date, is_new_insert, photos, amenities, negotiableFrom, askingPrice, tenderOffersOver, landAreaUnit, floorAreaUnit, capitalValueUnavailable, " + \
-              "priceDisplay, priceCode, propertyShortId, created_at" + \
+              "priceDisplay, priceCode, propertyShortId, created_at, listing_type" + \
               ") VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, " + \
               "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, " + \
               "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, " + \
               "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, " + \
               "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, " + \
               "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, " + \
-              "%s, %s, %s, %s)"
+              "%s, %s, %s, %s, %s)"
         cursor = self.conn.cursor()
         cursor.executemany(sql, insert_data)
         self.conn.commit()
-
-        # global item_images_path
-        # if len(item_images_path) != 0:
-        #     for image_path in item_images_path:
-        #         sql = "UPDATE homue_import_houses SET image_paths=%s WHERE origin_house_id=%s"
-        #         cursor.execute(sql, (image_path[1], image_path[0]))
-        #         self.conn.commit()
-        #     item_images_path.clear()
-
         cursor.close()
         self.insert_data_items.clear()
-        self.item_data_count = 0
-
-    def insert_images_to_database(self):
-        global item_images_path
-        if len(item_images_path) != 0:
-            cursor = self.conn.cursor()
-            for image_path in item_images_path:
-                sql = "UPDATE homue_import_houses SET image_paths=%s WHERE origin_house_id=%s"
-                cursor.execute(sql, (image_path[1], image_path[0]))
-                self.conn.commit()
-            cursor.close()
-            item_images_path.clear()        
+        self.item_data_count = 0  
 
     def start_sync_local_images(self):
         sql = 'SELECT id, photos FROM homue_import_houses WHERE is_new_insert = 1 AND JSON_LENGTH(photos) <> 0 AND image_paths IS NULL'
@@ -385,10 +340,6 @@ class HomeImagesPipeline(ImagesPipeline):
             raise DropItem("Item contains no images")
         adapter = ItemAdapter(item)
         adapter['image_paths'] = json.dumps(image_paths)
-
-        # item['photos'] = json.dumps(item['photos'])
-        # global item_images_path
-        # item_images_path.append((adapter['houseId'], adapter['image_paths']))
         return item
 
 

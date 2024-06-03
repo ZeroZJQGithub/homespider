@@ -102,6 +102,7 @@ class HomespiderItem(scrapy.Item):
     propertyShortId = scrapy.Field() #不对应，可以去掉
     image_paths = scrapy.Field()
     hasSwimmingPool = scrapy.Field()
+    listing_type = scrapy.Field()
     created_at = scrapy.Field()
 
     # features = scrapy.Field() #(json)(暂时无用)(删除)
