@@ -50,20 +50,21 @@ class HomeDefferredSpider(scrapy.Spider):
             self.spider_region = urls[-1].split('?')[0]
         logging.info(self.spider_region)
 
-        # self.conn = pymysql.connect(
-        #     host='192.168.117.128',
-        #     user='root',
-        #     password='123456',
-        #     database='homue_api',
-        #     port=3366
-        # )
         self.conn = pymysql.connect(
-            host='homue-dev-mysql.ckdssrns2bi1.ap-southeast-2.rds.amazonaws.com',
-            user='admin',
-            password='gorsuj2nigpy',
+            host='localhost',
+            user='root',
+            password='123456',
             database='homue_api',
             port=3306
-        )        
+        )
+
+        # self.conn = pymysql.connect(
+        #     host='homue-dev-mysql.ckdssrns2bi1.ap-southeast-2.rds.amazonaws.com',
+        #     user='admin',
+        #     password='gorsuj2nigpy',
+        #     database='homue_api',
+        #     port=3306
+        # )        
         sql = f"SELECT MAX(origin_house_id) as max_house_id FROM homue_import_houses WHERE category='{self.spider_category}'"
         if self.spider_region is not None:
             sql = f"SELECT MAX(origin_house_id) as max_house_id FROM homue_import_houses WHERE category='{self.spider_category}' AND slugRegion='{self.spider_region}'"
@@ -76,9 +77,10 @@ class HomeDefferredSpider(scrapy.Spider):
             self.max_unsold_house_id = ''
         cursor.close()
         self.conn.close()
+
         # self.max_unsold_house_id = ''
         self.has_smaller_house_id = False
-        logging.info(f'query sql: {sql}')
+        # logging.info(f'query sql: {sql}')
         logging.info(f'max_unsold_house_id: {self.max_unsold_house_id}')
 
     def start_requests(self):

@@ -12,6 +12,47 @@ root_url = "https://www.realestate.co.nz"
 nz_regions = ['auckland', 'canterbury', 'waikato', 'bay-of-plenty', 'northland', 'wellington', 'manawatu-whanganui', 'central-otago-lakes-district', 'otago', 'hawkes-bay', 'taranaki', 'coromandel', 'nelson-bays', 'southland', 'central-north-island', 'wairarapa', 'marlborough', 'west-coast', 'pacific-islands', 'gisborne', 'confidential']
 house_categories = ['residential', 'commercial', 'rural', 'business']
 
+# spider_urls = [
+#     'residential/sale/auckland/auckland-city',
+#     'residential/sale/auckland/manukau-city',
+#     'residential/sale/auckland/waitakere-city',
+#     'residential/sale/auckland/rodney',
+#     'residential/sale/auckland/north-shore-city',
+#     'residential/sale/auckland/franklin',
+#     'residential/sale/auckland/papakura',
+#     'residential/sale/auckland/waiheke-island',
+#     'residential/sale/auckland/hauraki-gulf-islands',
+#     'residential/sale/canterbury',
+#     'residential/sale/waikato',
+#     'residential/sale/bay-of-plenty',
+#     'residential/sale/northland',
+#     'residential/sale/wellington',
+#     'residential/sale/manawatu-whanganui',
+#     'residential/sale/otago',
+#     'residential/sale/central-otago-lakes-district',
+#     'residential/sale/hawkes-bay',
+#     'residential/sale/taranaki',
+#     'residential/sale/coromandel',
+#     'residential/sale/nelson-bays',
+#     'residential/sale/southland',
+#     'residential/sale/central-north-island',
+#     'residential/sale/wairarapa',
+#     'residential/sale/marlborough',
+#     'residential/sale/west-coast',
+#     'residential/sale/pacific-islands',
+#     'residential/sale/gisborne',
+#     'residential/sale/confidential',
+#     'commercial/sale',
+#     'rural/sale',
+#     'business/sale'
+# ]
+spider_urls = [
+    'residential/sale',
+    'commercial/sale',
+    'rural/sale',
+    'business/sale'
+]
+
 region_index = -1
 category_index = -1
 
@@ -19,21 +60,29 @@ category_index = -1
 def start_spider():
     global region_index, category_index, nz_regions, house_categories, root_url
     scrapy.utils.project.inside_project = lambda: True
-    region_index = (region_index + 1) % 21
-    if region_index == 0:
-        category_index  = category_index + 1
-    if category_index < 4:
-        url = f'{root_url}/{house_categories[category_index]}/sale/{nz_regions[region_index]}?by=latest'
-        print(f'The current spider url is: {url}')
-        if sys.platform.startswith('win32'):
-            os.system("type nul > scrapy.log")
-            os.system(f'python -m scrapy crawl home_defferred -a url={url}')
-        else:
-            os.system("> scrapy.log")
-            os.system(f'scrapy crawl home_defferred -a url={url}')
+    region_index = (region_index + 1) % 4
+    url = f'{root_url}/{spider_urls[region_index]}?by=latest'
+    print(f'The current spider url is: {url}')
+    if sys.platform.startswith('win32'):
+        os.system("type nul > scrapy.log")
+        os.system(f'python -m scrapy crawl home_defferred -a url={url}')
     else:
-        category_index = -1
-        region_index = -1
+        os.system("> scrapy.log")
+        os.system(f'scrapy crawl home_defferred -a url={url}')    
+    # if region_index == 0:
+    #     category_index  = category_index + 1
+    # if category_index < 4:
+    #     url = f'{root_url}/{house_categories[category_index]}/sale/{nz_regions[region_index]}?by=latest'
+    #     print(f'The current spider url is: {url}')
+    #     if sys.platform.startswith('win32'):
+    #         os.system("type nul > scrapy.log")
+    #         os.system(f'python -m scrapy crawl home_defferred -a url={url}')
+    #     else:
+    #         os.system("> scrapy.log")
+    #         os.system(f'scrapy crawl home_defferred -a url={url}')
+    # else:
+    #     category_index = -1
+    #     region_index = -1
 
 if __name__ == '__main__':
     scheduler = BlockingScheduler()
