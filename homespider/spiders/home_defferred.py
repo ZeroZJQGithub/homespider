@@ -55,7 +55,7 @@ class HomeDefferredSpider(scrapy.Spider):
             user='root',
             password='123456',
             database='homue_api',
-            port=3306
+            port=3366
         )
 
         # self.conn = pymysql.connect(
