@@ -10,7 +10,7 @@ from itemadapter import ItemAdapter
 from scrapy.exceptions import DropItem
 from scrapy.pipelines.images import ImagesPipeline
 from datetime import datetime
-
+from dateutil import tz
 import pymysql
 import json
 import re
@@ -51,6 +51,7 @@ class HomespiderPipeline:
 
 
     def open_spider(self, spider):
+        self.nz_tz = tz.gettz('Pacific/Auckland')
         # self.conn = pymysql.connect(
         #     host='homue-dev-mysql.ckdssrns2bi1.ap-southeast-2.rds.amazonaws.com',
         #     user='admin',
@@ -215,7 +216,7 @@ class HomespiderPipeline:
             else:
                 item['capitalValueUnavailable'] = 0  
 
-            created_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            created_at = datetime.now(tz=self.nz_tz).strftime('%Y-%m-%d %H:%M:%S')
             item['created_at'] = created_at      
             videoSrcs = item.get('videoSrc', [])
             if (videoSrcs is not None) and (len(videoSrcs) > 0):
