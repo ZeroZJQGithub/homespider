@@ -67,30 +67,30 @@ class HomespiderPipeline:
             port=self.db_settings.get('DB_PORT')            
         )
         cursor = self.conn.cursor()
-        sql = "SELECT * FROM nz_region"
+        sql = "SELECT id, fq_slug FROM nz_region"
         cursor.execute(sql)
         results = cursor.fetchall()
         nz_regions = {}
         for row in results:
-            nz_regions[row[1].replace(' ', '').lower()] = row[0]
+            nz_regions[row[1]] = row[0]
         
         self.regions = nz_regions
 
-        sql = "SELECT * FROM nz_city"
+        sql = "SELECT id, fq_slug FROM nz_city"
         cursor.execute(sql)
         results = cursor.fetchall()
         nz_cities = {}
         for row in results:
-            nz_cities[row[2].replace(' ', '').lower()] = row[0]
+            nz_cities[row[1]] = row[0]
 
         self.cities = nz_cities
 
-        sql = "SELECT * FROM nz_district"
+        sql = "SELECT id, fq_slug FROM nz_district"
         cursor.execute(sql)
         results = cursor.fetchall()
         nz_districts = {}
         for row in results:
-            nz_districts[row[2].replace(' ', '').lower()] = row[0]
+            nz_districts[row[1]] = row[0]
 
         self.districts = nz_districts
         cursor.close()
@@ -193,18 +193,18 @@ class HomespiderPipeline:
                     newOpenHomeTimes.append(newOpenHomeTime)
                 item['openHomeTimes'] = newOpenHomeTimes
 
-            if item.get('regionName') is not None:
-                item['regionId'] = self.regions.get(item['regionName'].replace(' ', '').lower())
+            if item.get('region_fq_slug') is not None:
+                item['regionId'] = self.regions.get(item['region_fq_slug'])
             else:
                 item['regionId'] = 0
 
-            if item.get('cityName') is not None:
-                item['cityId'] = self.cities.get(item['cityName'].replace(' ', '').lower())
+            if item.get('city_fq_slug') is not None:
+                item['cityId'] = self.cities.get(item['city_fq_slug'])
             else:
                 item['cityId'] = 0   
 
-            if item.get('districtName') is not None:
-                item['districtId'] = self.districts.get(item['districtName'].replace(' ', '').lower())
+            if item.get('district_fq_slug') is not None:
+                item['districtId'] = self.districts.get(item['district_fq_slug'])
             else:
                 item['districtId'] = 0    
 

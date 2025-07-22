@@ -155,6 +155,9 @@ class HomeDefferredSpider(scrapy.Spider):
         house_item['detail_address'] = detail_address
         house_item['slugRegion'] = detail_address.get('region-slug')
         house_item['listing_type'] = house_attributes.get('listing-type')
+        house_item['region_fq_slug'] = detail_address.get('region-fq-slug')
+        house_item['city_fq_slug'] = detail_address.get('district-fq-slug')
+        house_item['district_fq_slug'] = detail_address.get('suburb-display-fq-slug')
 
         
         if included_data is not None:

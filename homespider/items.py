@@ -104,6 +104,10 @@ class HomespiderItem(scrapy.Item):
     hasSwimmingPool = scrapy.Field()
     listing_type = scrapy.Field()
     created_at = scrapy.Field()
+    
+    region_fq_slug = scrapy.Field()
+    city_fq_slug = scrapy.Field()
+    district_fq_slug = scrapy.Field()
 
     # features = scrapy.Field() #(json)(暂时无用)(删除)
     # description = scrapy.Field() #不对应，可以去掉(删除)
